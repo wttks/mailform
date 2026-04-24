@@ -96,7 +96,7 @@ class Form implements FormBase {
             $sendConfig = $formatter->formatAll($this->sendConfig);
             $sender     = new Sender($sendConfig);
             $sender->sendAll($formatter);
-            Response::jsonResults(true, '送信が完了しました。', [], $this->completeUrl);
+            Response::jsonResults(true, '送信が完了しました。', null, $this->completeUrl);
         } catch ( SendException $se ) {
             Response::jsonResults(false, $se->getMessage());
         } catch ( ValidationException $e ) {
@@ -128,7 +128,7 @@ class Form implements FormBase {
         try {
             $formData = $request->validateForm($this->validationConfig, $this->beforeFormat);
             $this->formSession->save($formData);
-            Response::jsonResults(true, 'バリデーションが完了しました。', [], $this->confirmUrl);
+            Response::jsonResults(true, 'バリデーションが完了しました。', null, $this->confirmUrl);
         } catch ( ValidationException $e ) {
             Response::jsonResults(false, 'フォームのチェックに失敗しました。', $e->getErrors());
         }
@@ -151,7 +151,7 @@ class Form implements FormBase {
             $sender     = new Sender($sendConfig);
             $sender->sendAll($formatter);
             $this->formSession->clear();
-            Response::jsonResults(true, '送信が完了しました。', [], $this->completeUrl);
+            Response::jsonResults(true, '送信が完了しました。', null, $this->completeUrl);
         } catch ( SendException $se ) {
             Response::jsonResults(false, $se->getMessage());
         }
