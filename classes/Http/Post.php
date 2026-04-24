@@ -9,23 +9,41 @@ use AIJOH\Util\ArrayUtil;
  *
  */
 class Post {
-    
+
+    private static ?Post $instance = null;
+
     private array $post = [];
-    
-    public function __construct() {
-        $this->post = $this->buildPost();
+
+    /**
+     * @param array|null $data 指定すると buildPost をスキップしてそのまま使う（テスト用想定）
+     */
+    public function __construct( ?array $data = null ) {
+        $this->post = $data ?? $this->buildPost();
     }
-    
+
     /**
      * シングルトンでインスタンスを取得する。
      * @return Post
      */
     public static function getInstance() : Post {
-        static $instance = null;
-        if ( $instance === null ) {
-            $instance = new Post();
-        }
-        return $instance;
+        return self::$instance ??= new Post();
+    }
+
+    /**
+     * シングルトンをリセットする。次回 getInstance で $_POST から再構築される。
+     * @internal テスト用
+     */
+    public static function reset() : void {
+        self::$instance = null;
+    }
+
+    /**
+     * 指定データを直接シングルトンに差し込む（$_POST を経由しない）。
+     * @internal テスト用
+     * @param array $data
+     */
+    public static function setForTest( array $data ) : void {
+        self::$instance = new Post($data);
     }
     
     

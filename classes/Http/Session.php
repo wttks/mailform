@@ -7,17 +7,27 @@ class Session {
     private static ?Session $instance = null;
     
     private function __construct() {
-        if( session_status() !== PHP_SESSION_ACTIVE) {
+        // CLI / テスト環境では headers_sent でセッションを開始できないのでスキップする
+        if ( session_status() !== PHP_SESSION_ACTIVE && ! headers_sent() ) {
             session_start();
         }
     }
-    
-    
+
+
     public static function getInstance() : Session {
         if ( self::$instance === null ) {
             self::$instance = new Session();
         }
         return self::$instance;
+    }
+
+
+    /**
+     * シングルトンをリセットする。次回 getInstance で再生成される。
+     * @internal テスト用
+     */
+    public static function reset() : void {
+        self::$instance = null;
     }
     
     
