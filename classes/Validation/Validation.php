@@ -3,6 +3,7 @@
 namespace AIJOH\Validation;
 
 use AIJOH\Results\FormData;
+use AIJOH\Validation\Compose\ComposeFactory;
 use AIJOH\Validation\Exception\ValidationException;
 use AIJOH\Validation\Formatter\Formatter;
 use AIJOH\Validation\Validator\Validator;
@@ -27,7 +28,13 @@ class Validation {
      * @var string
      */
     private ?string $formDataClass = null;
-    
+
+    /**
+     * 設定情報（compose を読み取るため保持）
+     * @var array
+     */
+    private array $config;
+
     /**
      * コンストラクタ
      * フォーマットとバリデーションの設定情報を元にインスタンスを生成する。
@@ -42,8 +49,32 @@ class Validation {
      * @throws ValidationRuleException バリデーションの設定が不正な場合の例外
      */
     public function __construct( array $config ) {
+        $this->config    = $config;
         $this->formatter = new Formatter($config);
         $this->validator = new Validator($config);
+    }
+
+
+    /**
+     * 複合フィールド (compose) を適用する。
+     * 各フィールド設定に 'compose' があれば、元フィールドの値を結合して
+     * 結合後フィールドの値として data に追加する。
+     * 元フィールドのいずれかが空の場合は結合をスキップする
+     * （元フィールドの required バリデーションでエラーになるため）。
+     *
+     * @param array $data
+     * @return array
+     */
+    private function applyCompose( array $data ) : array {
+        foreach ( $this->config as $key => $setting ) {
+            if ( ! isset($setting['compose']) || ! is_array($setting['compose']) ) continue;
+            $composer = ComposeFactory::create($setting['compose']);
+            $value = $composer->apply($data);
+            if ( $value !== null ) {
+                $data[ $key ] = $value;
+            }
+        }
+        return $data;
     }
     
     
@@ -106,9 +137,10 @@ class Validation {
      */
     public function validated( array $data ) : array {
         $data = $this->beforeFormat($data);
+        $data = $this->applyCompose($data);
         $data = $this->format($data);
         $data = $this->beforeValidate($data);
-        
+
         return $this->dataValidate($data);
     }
     
