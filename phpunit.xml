@@ -10,5 +10,8 @@
         <testsuite name="Util">
             <directory>test/Util</directory>
         </testsuite>
+        <testsuite name="Verification">
+            <directory>test/Verification</directory>
+        </testsuite>
     </testsuites>
 </phpunit>

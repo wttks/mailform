@@ -2,6 +2,7 @@
 
 namespace AIJOH\Verification\Verify;
 
+use AIJOH\Http\Post;
 use AIJOH\Http\Session;
 use AIJOH\Util\HtmlUtil;
 
@@ -34,7 +35,7 @@ class VerifyCsrfToken extends VerifyBase{
      */
     private function getToken() : string {
         $token = $this->session->get($this->sessionKey);
-        if ( empty($toke) ) {
+        if ( empty($token) ) {
             $token = $this->generate();
             $this->session->set($this->sessionKey, $token);
         }
@@ -70,11 +71,11 @@ class VerifyCsrfToken extends VerifyBase{
      */
     public function verify() : bool {
         $token = $this->session->get($this->sessionKey);
-        if( empty($token) ) {
+        if ( empty($token) ) {
             return false;
         }
-        
-        $input = filter_input(INPUT_POST, $this->key);
+
+        $input = Post::getInstance()->get($this->key, '');
         return $token === $input;
     }
     
