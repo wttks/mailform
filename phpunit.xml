@@ -22,5 +22,8 @@
         <testsuite name="AISpam">
             <directory>test/AISpam</directory>
         </testsuite>
+        <testsuite name="Results">
+            <directory>test/Results</directory>
+        </testsuite>
     </testsuites>
 </phpunit>
