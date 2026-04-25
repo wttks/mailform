@@ -13,5 +13,8 @@
         <testsuite name="Verification">
             <directory>test/Verification</directory>
         </testsuite>
+        <testsuite name="RateLimit">
+            <directory>test/RateLimit</directory>
+        </testsuite>
     </testsuites>
 </phpunit>
