@@ -26,18 +26,29 @@ class Verification {
     }
     
     /**
-     * 初期化を行う
-     * @param $config
-     * @return void
+     * 初期化を行う。
+     *
+     * 設定形式:
+     *   ['csrfToken' => true]                 // 設定なしで有効化
+     *   ['honeypot'  => ['name' => 'website']] // 設定あり
+     *   ['csrfToken' => false]                // 明示的に無効化
+     *   ['csrfToken']                         // ← 旧形式（数値キー）も互換維持
+     *
+     * @param array $config
      */
-    private function init( $config ) : void {
+    private function init( array $config ) : void {
         foreach ( $config as $key => $value ) {
             if ( is_int($key) ) {
-                $name = $value;
+                // 旧形式: ['csrfToken'] のような文字列リスト → 互換維持
+                $name = (string) $value;
                 $param = [];
             } else {
-                $name = $key;
-                $param = $value;
+                // 新形式: 'name' => true / false / array
+                if ( $value === false ) {
+                    continue;  // false は明示無効化
+                }
+                $name = (string) $key;
+                $param = is_array($value) ? $value : [];
             }
             $this->verifyList[] = $this->loadVerify($name, $param);
         }
