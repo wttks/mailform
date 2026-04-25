@@ -29,22 +29,22 @@ class Sender {
         foreach ( $configAll as $key => $config ) {
             try {
                 $this->sendList[ $key ] = $this->buildSendClass($key, $config);
-            }catch(ValidationException $ve){
+            } catch ( ValidationException $ve ) {
                 $className = $this->getClassName($key);
-                $errors = print_r($ve->getErrors(), true);
-                throw new SendException($className,$className. "の設定が不正です。エラー：" . $errors);
+                // 詳細はサーバログに、クライアントには汎用メッセージのみ
+                error_log("[Sender] {$className} の設定が不正: " . print_r($ve->getErrors(), true));
+                throw new SendException($className, "送信設定にエラーがあります。サーバ管理者にお問い合わせください。");
             } catch ( \Exception $e ) {
                 $className = $this->getClassName($key);
-                error_log($className . "の設定が不正です。エラー：" . $e->getMessage());
-                throw new SendException($className,$className . "の設定が不正です。エラー：" . $e->getMessage());
+                error_log("[Sender] {$className} の設定が不正: " . $e->getMessage());
+                throw new SendException($className, "送信設定にエラーがあります。サーバ管理者にお問い合わせください。");
             }
         }
     }
-    
-    
+
+
     protected function buildSendClass( string $key, array $config ) : Send {
         $className = $this->getClassName($key);
-        error_log("sender class name: $className\n");
         $send = new $className();
         $send->setConfig($config);
         return $send;
