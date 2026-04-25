@@ -69,8 +69,11 @@ class RateLimit {
     /**
      * エンドポイントの上限を評価する。上限超過なら false、OK なら現在のリクエストを記録して true を返す。
      * テスト用にも使える純粋ロジック。
+     *
+     * @param string|RateLimitEndpoint $endpoint エンドポイント識別子（enum または文字列）
      */
-    public static function check( string $endpointName ) : bool {
+    public static function check( string|RateLimitEndpoint $endpoint ) : bool {
+        $endpointName = $endpoint instanceof RateLimitEndpoint ? $endpoint->value : $endpoint;
         if ( self::$disabled || self::$config === null || empty(self::$config['enabled']) ) {
             return true;
         }
@@ -115,9 +118,11 @@ class RateLimit {
 
     /**
      * エンドポイントの上限を評価し、超過時は 429 相当のレスポンスで exit する。
+     *
+     * @param string|RateLimitEndpoint $endpoint エンドポイント識別子
      */
-    public static function checkOrAbort( string $endpointName ) : void {
-        if ( ! self::check($endpointName) ) {
+    public static function checkOrAbort( string|RateLimitEndpoint $endpoint ) : void {
+        if ( ! self::check($endpoint) ) {
             Response::jsonResults(false, '送信が制限されています。しばらくしてから再度お試しください。');
         }
     }
