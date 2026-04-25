@@ -2,6 +2,8 @@
 
 namespace AIJOH\Form;
 
+use AIJOH\AISpam\AISpamDetector;
+use AIJOH\AISpam\SpamSession;
 use AIJOH\Http\Request;
 use AIJOH\Http\Response;
 use AIJOH\Results\Formatter\Formatter;
@@ -38,6 +40,9 @@ class Form implements FormBase {
     /** @var callable|null バリデーション前のデータ加工関数 */
     private $beforeFormat;
 
+    /** @var string AI スパム判定で弾かれた際にユーザーに表示するメッセージ */
+    private string $spamBlockMessage;
+
 
     public function __construct( array $config ) {
         $this->verification     = new Verification($config['verify'] ?? []);
@@ -48,6 +53,8 @@ class Form implements FormBase {
         $this->completeUrl      = $config['complete_url'] ?? '';
         $this->beforeFormat     = $config['beforeFormat'] ?? null;
         $this->formSession      = new FormSession();
+        $this->spamBlockMessage = $config['ai_spam']['block_message']
+            ?? '送信内容に問題が検出されました。お手数ですがお電話でお問い合わせください。';
     }
 
 
@@ -72,6 +79,9 @@ class Form implements FormBase {
             return;
         }
 
+        // 既にスパム判定済セッションは即拒否
+        SpamSession::abortIfBlocked($this->spamBlockMessage);
+
         $verifyMessage = $this->verification->verify();
         if ( $verifyMessage !== true ) {
             Response::jsonResults(false, $verifyMessage);
@@ -87,11 +97,25 @@ class Form implements FormBase {
 
 
     /**
+     * AI スパム判定を実行し、スパムなら拒否レスポンスで終了する。
+     */
+    private function checkSpamOrAbort( array $data ) : void {
+        $judgement = AISpamDetector::judge($data);
+        if ( $judgement->isSpam ) {
+            SpamSession::block($judgement->reason);
+            Response::jsonResults(false, $this->spamBlockMessage);
+        }
+    }
+
+
+    /**
      * 直接送信フロー: バリデーション → メール送信 → 完了
      */
     private function receiveDirectFlow( Request $request ) : void {
         try {
-            $formData   = $request->validateForm($this->validationConfig, $this->beforeFormat);
+            $formData = $request->validateForm($this->validationConfig, $this->beforeFormat);
+            // バリデーション後・送信前に AI スパム判定（スパム判定なら exit）
+            $this->checkSpamOrAbort($formData->getData());
             $formatter  = new Formatter($formData);
             $sendConfig = $formatter->formatAll($this->sendConfig);
             $sender     = new Sender($sendConfig);
@@ -127,6 +151,8 @@ class Form implements FormBase {
     private function receiveInputStep( Request $request ) : void {
         try {
             $formData = $request->validateForm($this->validationConfig, $this->beforeFormat);
+            // 確認画面表示前にも AI スパム判定（早期に弾く）
+            $this->checkSpamOrAbort($formData->getData());
             $this->formSession->save($formData);
             Response::jsonResults(true, 'バリデーションが完了しました。', null, $this->confirmUrl);
         } catch ( ValidationException $e ) {
@@ -144,6 +170,9 @@ class Form implements FormBase {
             Response::jsonResults(false, 'セッションが切れました。最初からやり直してください。');
             return;
         }
+
+        // 念のため確認 → 送信ステップでも判定する（キャッシュにヒットするので追加コストは無い）
+        $this->checkSpamOrAbort($formData->getData());
 
         try {
             $formatter  = new Formatter($formData);
