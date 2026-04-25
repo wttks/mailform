@@ -52,20 +52,6 @@ class Request {
     }
     
     
-    /**
-     * GETのデータを返す。
-     * @return bool
-     */
-    public function checkCsrfToken( $tokenKey = '_token' ) : bool {
-        $csrfToken = CsrfToken::getInstance();
-        $token = $this->post()->get($tokenKey);
-        if( $token === null ) {
-            return false;
-        }
-        
-        return $csrfToken->checkToken($token);
-    }
-    
     public function post() : Post {
         return Post::getInstance();
     }

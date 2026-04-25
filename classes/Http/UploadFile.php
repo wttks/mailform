@@ -40,11 +40,27 @@ class UploadFile {
     
     
     /**
-     * アップロードされたファイル名を取得する。
+     * アップロードされたファイル名を取得する（サニタイズ済み）。
+     *
+     * - basename でディレクトリ部分を除去（path traversal 対策）
+     * - 制御文字 / Windows 予約文字 / NULL バイトを除去
+     * - 連続する .. を抑制
+     *
      * @return string ファイル名
      */
     public function getName() : string {
-        return $this->file['name'] ?? '';
+        $name = $this->file['name'] ?? '';
+        if ( $name === '' ) {
+            return '';
+        }
+        // ディレクトリ部分を除去（"/" と "\" 両対応で basename）
+        $name = preg_replace('#^.*[\\\\/]#', '', $name);
+        // 制御文字 (NULL, 改行など) と Windows 予約文字を除去
+        $name = preg_replace('/[\x00-\x1f\x7f<>:"\/\\\\|?*]/u', '_', $name);
+        // 連続するドットや先頭ドットを抑制（隠しファイル化の阻止）
+        $name = preg_replace('/\.{2,}/', '.', $name);
+        $name = ltrim($name, '.');
+        return $name;
     }
     
     

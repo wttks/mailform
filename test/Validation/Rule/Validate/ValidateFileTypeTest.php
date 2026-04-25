@@ -131,6 +131,16 @@ class ValidateFileTypeTest extends TestCase {
         $this->assertTrue($this->rule->validate($file, ['image']));
     }
 
+    public function test_image_エイリアスに_svg_は含まれない_XSS対策() : void {
+        $file = $this->makeFile('image/svg+xml', 'svg');
+        $this->assertFalse($this->rule->validate($file, ['image']));
+    }
+
+    public function test_svg_エイリアスを明示指定すれば_svg_は許可される() : void {
+        $file = $this->makeFile('image/svg+xml', 'svg');
+        $this->assertTrue($this->rule->validate($file, ['svg']));
+    }
+
     // ==============================
     // 複数エイリアス指定
     // ==============================

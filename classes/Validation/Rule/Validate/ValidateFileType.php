@@ -31,8 +31,14 @@ class ValidateFileType extends ValidateBase {
             'ext'  => ['ppt', 'pptx'],
         ],
         'image'      => [
+            // image/* は許可するが SVG は XSS リスクのため除外する。
+            // SVG を許可したい場合は明示的に file_type:svg を指定する。
             'mime' => ['image/*'],
-            'ext'  => ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico'],
+            'ext'  => ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'ico'],
+        ],
+        'svg'        => [
+            'mime' => ['image/svg+xml'],
+            'ext'  => ['svg'],
         ],
         'video'      => [
             'mime' => ['video/*'],

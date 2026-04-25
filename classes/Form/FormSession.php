@@ -25,6 +25,9 @@ class FormSession {
      * バリデーション済みデータとタイトル情報をセッションに保存する。
      */
     public function save( FormData $formData ) : void {
+        // セッション固定化対策: 確認フローへ遷移する直前に ID を再発行する
+        $this->session->regenerate();
+
         $data = $this->serializeData($formData->getData());
         $titles = $this->serializeTitles($formData->getTitleManager());
 

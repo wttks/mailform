@@ -76,7 +76,11 @@ class VerifyCsrfToken extends VerifyBase{
         }
 
         $input = Post::getInstance()->get($this->key, '');
-        return $token === $input;
+        if ( ! is_string($input) ) {
+            return false;
+        }
+        // タイミング攻撃対策のため hash_equals で比較する
+        return hash_equals($token, $input);
     }
     
     
