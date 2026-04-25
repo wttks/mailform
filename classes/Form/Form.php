@@ -88,10 +88,30 @@ class Form implements FormBase {
             return;
         }
 
+        // _action=validate ならバリデーションのみ実行（リアルタイム検証用）
+        if ( $request->post()->get('_action', '') === 'validate' ) {
+            $this->receiveValidateOnly($request);
+            return;
+        }
+
         if ( $this->flow === 'confirm' ) {
             $this->receiveConfirmFlow($request);
         } else {
             $this->receiveDirectFlow($request);
+        }
+    }
+
+
+    /**
+     * バリデーションだけ実行してエラー一覧を返す（リアルタイム検証用）。
+     * メール送信は行わない。
+     */
+    private function receiveValidateOnly( Request $request ) : void {
+        try {
+            $request->validateForm($this->validationConfig, $this->beforeFormat);
+            Response::jsonResults(true);
+        } catch ( ValidationException $e ) {
+            Response::jsonResults(false, null, $e->getErrors());
         }
     }
 
