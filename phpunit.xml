@@ -16,5 +16,11 @@
         <testsuite name="RateLimit">
             <directory>test/RateLimit</directory>
         </testsuite>
+        <testsuite name="AI">
+            <directory>test/AI</directory>
+        </testsuite>
+        <testsuite name="AISpam">
+            <directory>test/AISpam</directory>
+        </testsuite>
     </testsuites>
 </phpunit>
