@@ -25,5 +25,8 @@
         <testsuite name="Results">
             <directory>test/Results</directory>
         </testsuite>
+        <testsuite name="Config">
+            <directory>test/Config</directory>
+        </testsuite>
     </testsuites>
 </phpunit>
