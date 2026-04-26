@@ -192,39 +192,31 @@ class StrUtil {
     
     
     /**
-     * ふりがなのチェックを行う
+     * フリガナのチェックを行う（ひらがな or カタカナ）。
+     *
+     * 単純な「全部ひらがな」「全部カタカナ」とは別概念で、
+     * 「フリガナとして妥当か（指定の文字種のみで構成、空白で複数ブロック許容）」を見る。
+     *
      * @param string|array $str
+     * @param string $type 'hiragana' または 'katakana'（デフォルト）
      * @return bool
      */
-    public static function isFurigana( string|array $str ) : bool {
+    public static function isFurigana( string|array $str, string $type = 'katakana' ) : bool {
         if ( is_string($str) ) {
-            return self::isFuriganaString($str, true);
+            return self::isFuriganaString($str, $type);
         }
-        return ArrayUtil::isAllTrue($str, fn( $value ) => self::isFurigana($value));
+        return ArrayUtil::isAllTrue($str, fn( $value ) => self::isFurigana($value, $type));
     }
-    
-    
+
+
     /**
-     * フリガナのチェックを行う。
-     * @param string $str
-     * @return bool
+     * 文字列がフリガナとして妥当かを判定する。
+     * 指定の文字種が「空白で区切られて複数ブロック」並んでも許容する
+     * （氏 名、ヴァン デル ベルク 等のミドルネーム含む複合姓に対応）。
      */
-    public static function isFurikana( string|array $str ) : bool {
-        if ( is_string($str) ) {
-            return self::isFuriganaString($str, false);
-        }
-        return ArrayUtil::isAllTrue($str, fn( $value ) => self::isFurikana($value));
-    }
-    
-    /**
-     * 文字列がふりがなかどうかを判別する。
-     * @param string $str
-     * @param bool $isHiragana
-     * @return false|int
-     */
-    private static function isFuriganaString( string $str, bool $isHiragana ) : bool {
-        $pattern = $isHiragana ? '\p{Hiragana}' : '\p{Katakana}';
-        $regExp = '/\A' . $pattern . '+(?:\p{Zs}*' . $pattern . '+)?\z/u';
+    private static function isFuriganaString( string $str, string $type ) : bool {
+        $pattern = $type === 'hiragana' ? '\p{Hiragana}' : '\p{Katakana}';
+        $regExp = '/\A' . $pattern . '+(?:\p{Zs}+' . $pattern . '+)*\z/u';
         return (bool)preg_match($regExp, $str);
     }
     

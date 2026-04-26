@@ -43,6 +43,6 @@ class ValidateFurigana extends ValidateBase {
     }
 
     private function checkString( string $value, string $type ) : bool {
-        return $type === 'hiragana' ? StrUtil::isFurigana($value) : StrUtil::isFurikana($value);
+        return StrUtil::isFurigana($value, $type);
     }
 }

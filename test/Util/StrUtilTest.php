@@ -330,40 +330,59 @@ class StrUtilTest extends TestCase {
         $this->assertFalse($result);
     }
 
-    // ---- isFurigana() ----
+    // ---- isFurigana() ひらがな指定 ----
 
-    public function test_isFurigana_ひらがなのみtrue(): void {
-        $this->assertTrue(StrUtil::isFurigana('あいうえお'));
+    public function test_isFurigana_ひらがな_ひらがなのみtrue(): void {
+        $this->assertTrue(StrUtil::isFurigana('あいうえお', 'hiragana'));
     }
 
-    public function test_isFurigana_スペースを挟んだひらがなtrue(): void {
-        $this->assertTrue(StrUtil::isFurigana('やまだ たろう'));
+    public function test_isFurigana_ひらがな_スペースを挟んだひらがなtrue(): void {
+        $this->assertTrue(StrUtil::isFurigana('やまだ たろう', 'hiragana'));
     }
 
-    public function test_isFurigana_カタカナが含まれるとfalse(): void {
-        $this->assertFalse(StrUtil::isFurigana('アイウ'));
+    public function test_isFurigana_ひらがな_3ブロック以上もtrue(): void {
+        $this->assertTrue(StrUtil::isFurigana('やまだ たろう じろう', 'hiragana'));
     }
 
-    public function test_isFurigana_空文字はfalse(): void {
-        $this->assertFalse(StrUtil::isFurigana(''));
+    public function test_isFurigana_ひらがな_カタカナが含まれるとfalse(): void {
+        $this->assertFalse(StrUtil::isFurigana('アイウ', 'hiragana'));
     }
 
-    // ---- isFurikana() ----
-
-    public function test_isFurikana_カタカナのみtrue(): void {
-        $this->assertTrue(StrUtil::isFurikana('アイウエオ'));
+    public function test_isFurigana_ひらがな_空文字はfalse(): void {
+        $this->assertFalse(StrUtil::isFurigana('', 'hiragana'));
     }
 
-    public function test_isFurikana_スペースを挟んだカタカナtrue(): void {
-        $this->assertTrue(StrUtil::isFurikana('ヤマダ タロウ'));
+    // ---- isFurigana() カタカナ指定（デフォルト） ----
+
+    public function test_isFurigana_カタカナ_デフォルトはkatakana(): void {
+        $this->assertTrue(StrUtil::isFurigana('アイウエオ'));
+        $this->assertTrue(StrUtil::isFurigana('アイウエオ', 'katakana'));
     }
 
-    public function test_isFurikana_ひらがなが含まれるとfalse(): void {
-        $this->assertFalse(StrUtil::isFurikana('あいう'));
+    public function test_isFurigana_カタカナ_スペースを挟んだカタカナtrue(): void {
+        $this->assertTrue(StrUtil::isFurigana('ヤマダ タロウ', 'katakana'));
     }
 
-    public function test_isFurikana_空文字はfalse(): void {
-        $this->assertFalse(StrUtil::isFurikana(''));
+    public function test_isFurigana_カタカナ_3ブロック以上もtrue(): void {
+        $this->assertTrue(StrUtil::isFurigana('ヤマダ タロウ ジロウ', 'katakana'));
+    }
+
+    public function test_isFurigana_カタカナ_全角空白でも許容(): void {
+        $this->assertTrue(StrUtil::isFurigana('ヤマダ　タロウ', 'katakana'));
+    }
+
+    public function test_isFurigana_カタカナ_ひらがなが含まれるとfalse(): void {
+        $this->assertFalse(StrUtil::isFurigana('あいう', 'katakana'));
+    }
+
+    public function test_isFurigana_カタカナ_空文字はfalse(): void {
+        $this->assertFalse(StrUtil::isFurigana('', 'katakana'));
+    }
+
+    public function test_isFurigana_カタカナ_中黒も許容(): void {
+        // 中黒「・」は Unicode の Katakana プロパティに含まれるので true
+        // ヴァン・デル・ベルク のような複合姓に対応するため有用
+        $this->assertTrue(StrUtil::isFurigana('ヤマダ・タロウ', 'katakana'));
     }
 
     // ---- inJapanese() ----
