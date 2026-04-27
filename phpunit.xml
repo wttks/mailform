@@ -31,5 +31,8 @@
         <testsuite name="Lang">
             <directory>test/Lang</directory>
         </testsuite>
+        <testsuite name="Form">
+            <directory>test/Form</directory>
+        </testsuite>
     </testsuites>
 </phpunit>

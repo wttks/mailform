@@ -219,4 +219,54 @@ class Form implements FormBase {
     public function getConfirmData() : array {
         return $this->formSession->getConfirmItems();
     }
+
+
+    /**
+     * カスタム業務ロジックの検証結果をフォームと同じ JSON 形式で返して終了する。
+     *
+     * Form::receive() の前に独自の検証（営業時間・在庫・予約枠など mailform 標準
+     * ルールでは表現できないもの）を行うときの正解の返し方。
+     *
+     * 配列形式は標準バリデーションと揃えてあるため、フロントの form.js が
+     * そのままフィールド単位エラーとして表示できる。
+     *
+     * 使用例:
+     *   $errors = [];
+     *   if ( ! StoreSchedule::isOpen($postedDatetime) ) {
+     *       $errors['datetime'] = '営業時間外です。';
+     *   }
+     *   if ( $errors ) {
+     *       \AIJOH\Form\Form::abortWithErrors($errors);
+     *   }
+     *   $form = new \AIJOH\Form\Form(include __DIR__ . '/config.php');
+     *   $form->receive();
+     *
+     * @param array<string, string|string[]> $errors フィールド名 => メッセージ（または配列）
+     * @param string $message 全体メッセージ
+     * @return never
+     */
+    public static function abortWithErrors(
+        array $errors,
+        string $message = 'フォームのチェックに失敗しました。',
+    ) : never {
+        Response::jsonResults(false, $message, self::flattenErrors($errors));
+    }
+
+
+    /**
+     * フィールド単位エラー配列をフロント送信用のフラット形式（field => string）に変換する。
+     * 値が配列なら改行で連結する。abortWithErrors() のテスト容易化のため公開している。
+     *
+     * @param array<string, string|string[]> $errors
+     * @return array<string, string>
+     */
+    public static function flattenErrors( array $errors ) : array {
+        $flat = [];
+        foreach ( $errors as $field => $messages ) {
+            $flat[ $field ] = is_array($messages)
+                ? implode("\n", array_map('strval', $messages))
+                : (string) $messages;
+        }
+        return $flat;
+    }
 }
