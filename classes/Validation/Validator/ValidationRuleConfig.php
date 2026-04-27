@@ -2,6 +2,7 @@
 
 namespace AIJOH\Validation\Validator;
 
+use AIJOH\Lang\Translator;
 use AIJOH\Validation\Exception\ValidationRuleException;
 use AIJOH\Validation\Parser\RuleConfig;
 use AIJOH\Validation\Rule\Validate\ValidateBase;
@@ -58,7 +59,7 @@ class ValidationRuleConfig extends RuleConfig {
         if ( $this->message !== "" ) {
             return $this->message;
         }
-        return $this->getInstance()->getErrorMessage();
+        return Translator::translate($this->getInstance()->getErrorMessage());
     }
     
     /**

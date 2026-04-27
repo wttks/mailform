@@ -28,5 +28,8 @@
         <testsuite name="Config">
             <directory>test/Config</directory>
         </testsuite>
+        <testsuite name="Lang">
+            <directory>test/Lang</directory>
+        </testsuite>
     </testsuites>
 </phpunit>

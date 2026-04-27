@@ -5,6 +5,7 @@ namespace AIJOH\Form;
 use AIJOH\AISpam\AISpamDetector;
 use AIJOH\AISpam\SpamSession;
 use AIJOH\Http\Request;
+use AIJOH\Lang\Translator;
 use AIJOH\Http\Response;
 use AIJOH\Results\Formatter\Formatter;
 use AIJOH\Sender\Sender;
@@ -45,6 +46,9 @@ class Form implements FormBase {
 
 
     public function __construct( array $config ) {
+        if ( isset($config['lang']) && is_string($config['lang']) && $config['lang'] !== '' ) {
+            Translator::setLocale($config['lang']);
+        }
         $this->verification     = new Verification($config['verify'] ?? []);
         $this->validationConfig = $config['validation'] ?? [];
         $this->sendConfig       = $config['sender'] ?? [];
