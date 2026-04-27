@@ -1,10 +1,29 @@
 {
+  "name": "aijoh/mailform",
+  "description": "PHP メールフォームフレームワーク。CSRF / Honeypot / レート制限 / AI スパム判定の多段防御、確認画面フロー、マルチフォーム共通設定、リアルタイムバリデーションを内蔵。",
+  "type": "library",
+  "license": "MIT",
+  "keywords": ["mailform", "contact-form", "csrf", "honeypot", "rate-limit", "spam", "japanese", "validation"],
+  "homepage": "https://github.com/aijoh/mailform",
+  "authors": [
+    { "name": "AIJOH", "email": "info@ai-joh.co.jp" }
+  ],
+  "support": {
+    "issues": "https://github.com/aijoh/mailform/issues",
+    "source": "https://github.com/aijoh/mailform"
+  },
   "autoload": {
     "psr-4": {
-      "AIJOH\\": ["classes/","test/"]
+      "AIJOH\\": "classes/"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "AIJOH\\": "test/"
     }
   },
   "require": {
+    "php": "^8.2",
     "ext-mbstring": "*",
     "ext-fileinfo": "*",
     "ext-curl": "*",
@@ -12,6 +31,10 @@
     "curl/curl": "^2.5"
   },
   "require-dev": {
-    "phpunit/phpunit": "*"
-  }
+    "phpunit/phpunit": "^11.0"
+  },
+  "config": {
+    "sort-packages": true
+  },
+  "minimum-stability": "stable"
 }
