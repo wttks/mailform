@@ -14,11 +14,40 @@ class UploadFile {
     private ?array $file;
     
     /**
+     * 確認フローで一時保存から復元したファイルか（move_uploaded_file 不可）。
+     */
+    private bool $isPersisted = false;
+
+
+    /**
      * コンストラクタ
      * @param string $name キーの名前
      */
-    public function __construct( string $name ) {
-        $this->file = $_FILES[ $name ] ?? null;
+    public function __construct( string $name = "" ) {
+        $this->file = $name === "" ? null : ( $_FILES[ $name ] ?? null );
+    }
+
+
+    /**
+     * 一時保存されたファイル情報から UploadFile を再構築する。
+     * 確認画面フローで session に退避した添付ファイルを送信ステップで復元する用途。
+     */
+    public static function fromPersisted(
+        string $path,
+        string $originalName,
+        string $mimeType,
+        int $size,
+    ) : self {
+        $instance = new self();
+        $instance->file = [
+            'name'     => $originalName,
+            'tmp_name' => $path,
+            'type'     => $mimeType,
+            'size'     => $size,
+            'error'    => UPLOAD_ERR_OK,
+        ];
+        $instance->isPersisted = true;
+        return $instance;
     }
     
     /**
@@ -78,11 +107,15 @@ class UploadFile {
      * @return string マイムタイプ
      */
     public function getMimeType() : string {
+        // 永続化済みは保存時点で確定したものを使う（再判定で I/O しない）
+        if ( $this->isPersisted ) {
+            return $this->file['type'] ?? '';
+        }
         $tmpFile = $this->getTmpName();
         if( empty($tmpFile) ){
             return '';
         }
-        
+
         $type = mime_content_type($tmpFile);
         return $type !== false ? $type : $this->file['type'] ?? '';
     }
@@ -132,7 +165,19 @@ class UploadFile {
         if ( ! $this->exists() ) {
             return false;
         }
+        // 永続化済みは move_uploaded_file が使えないので rename で移動
+        if ( $this->isPersisted ) {
+            return rename($this->getTmpName(), $path);
+        }
         return move_uploaded_file($this->getTmpName(), $path);
+    }
+
+
+    /**
+     * 一時保存されたファイル（fromPersisted で復元）かどうか。
+     */
+    public function isPersisted() : bool {
+        return $this->isPersisted;
     }
     
     

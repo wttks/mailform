@@ -12,7 +12,7 @@ class FormData {
      * タイトルとキーを管理するクラス
      * @var TitleManager|null
      */
-    protected ?TitleManager $titleManager;
+    protected ?TitleManager $titleManager = null;
     
     /**
      * 入力データ
