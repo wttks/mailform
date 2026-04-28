@@ -16,11 +16,37 @@ class DraftManager {
     private const DEFAULT_COMPRESS   = 512;
     private const DEFAULT_MAX_BYTES  = 7000;
     private const DEFAULT_SPLIT      = 5;
-    private const DEFAULT_BLOCKED    = [
+    public const DEFAULT_BLOCKED     = [
         'password', 'pass', 'pw',
         'credit_card', 'cc_number', 'card_number',
         'cvv', 'cvc', 'pin',
     ];
+
+
+    /**
+     * ホワイトリストに含まれている危険フィールド名を抽出する（ConfigValidator から利用）。
+     * @param array $fields 'fields' の値
+     * @param array $additionalBlocked 'blocked_fields' の値
+     * @return string[] 危険と判定されたフィールド名
+     */
+    public static function detectDangerousFields( array $fields, array $additionalBlocked = [] ) : array {
+        $blocked = array_merge(self::DEFAULT_BLOCKED, $additionalBlocked);
+        $dangerous = [];
+        foreach ( $fields as $field ) {
+            $field = (string) $field;
+            $lower = strtolower($field);
+            foreach ( $blocked as $name ) {
+                if ( $name === '' ) {
+                    continue;
+                }
+                if ( str_contains($lower, strtolower((string) $name)) ) {
+                    $dangerous[] = $field;
+                    break;
+                }
+            }
+        }
+        return $dangerous;
+    }
 
     private array $config;
     private string $key;
@@ -182,17 +208,7 @@ class DraftManager {
      */
     private function isDangerousFieldName( string $field ) : bool {
         $custom = $this->config['blocked_fields'] ?? [];
-        $blocked = array_merge(self::DEFAULT_BLOCKED, $custom);
-        $lower = strtolower($field);
-        foreach ( $blocked as $name ) {
-            if ( $name === '' ) {
-                continue;
-            }
-            if ( str_contains($lower, strtolower((string) $name)) ) {
-                return true;
-            }
-        }
-        return false;
+        return ! empty(self::detectDangerousFields([ $field ], $custom));
     }
 
 

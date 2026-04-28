@@ -3,6 +3,8 @@
 namespace AIJOH\Config;
 
 use AIJOH\AI\AIProvider;
+use AIJOH\Form\Draft\DraftConsent;
+use AIJOH\Form\Draft\DraftManager;
 use AIJOH\RateLimit\RateLimitEndpoint;
 use AIJOH\RateLimit\RateLimitKeyType;
 
@@ -24,6 +26,7 @@ class ConfigValidator {
         self::validateAi($config);
         self::validateAiSpam($config);
         self::validateRateLimit($config);
+        self::validateDraft($config);
     }
 
 
@@ -82,6 +85,130 @@ class ConfigValidator {
         // API ベースの provider は api_key 必須
         if ( $provider->requiresApiKey() && empty($config['ai']['api_key']) ) {
             throw new ConfigException("ai.provider='{$provider->value}' は api_key が必要です。");
+        }
+    }
+
+
+    /**
+     * draft セクションの検証。
+     * セクション自体は任意（無ければ機能 OFF）。あれば fields と encryption_key 必須。
+     */
+    private static function validateDraft( array $config ) : void {
+        if ( ! isset($config['draft']) ) {
+            return;
+        }
+        $draft = $config['draft'];
+        if ( ! is_array($draft) ) {
+            throw new ConfigException("draft は配列である必要があります。");
+        }
+
+        // fields: 必須、非空配列、各要素は文字列
+        if ( ! isset($draft['fields']) ) {
+            throw new ConfigException("draft.fields は必須です（保存対象フィールドのホワイトリスト）。");
+        }
+        if ( ! is_array($draft['fields']) || empty($draft['fields']) ) {
+            throw new ConfigException("draft.fields は非空の配列である必要があります。");
+        }
+        foreach ( $draft['fields'] as $i => $field ) {
+            if ( ! is_string($field) ) {
+                throw new ConfigException("draft.fields[{$i}] は文字列である必要があります。");
+            }
+        }
+
+        // encryption_key: 必須、32 バイト
+        if ( ! isset($draft['encryption_key']) ) {
+            throw new ConfigException("draft.encryption_key は必須です（sodium 用 32 バイト鍵）。");
+        }
+        if ( ! is_string($draft['encryption_key']) ) {
+            throw new ConfigException("draft.encryption_key は文字列である必要があります。");
+        }
+        if ( strlen($draft['encryption_key']) !== SODIUM_CRYPTO_SECRETBOX_KEYBYTES ) {
+            throw new ConfigException(
+                "draft.encryption_key は " . SODIUM_CRYPTO_SECRETBOX_KEYBYTES
+                . " バイトである必要があります。現在: " . strlen($draft['encryption_key']) . " バイト。"
+            );
+        }
+
+        // 数値系のチェック
+        foreach ( [ 'compress', 'max_bytes', 'split', 'ttl' ] as $k ) {
+            if ( isset($draft[$k]) && ! ( is_int($draft[$k]) && $draft[$k] >= 0 ) ) {
+                throw new ConfigException("draft.{$k} は 0 以上の整数である必要があります。");
+            }
+        }
+
+        // cookie セクション
+        if ( isset($draft['cookie']) ) {
+            if ( ! is_array($draft['cookie']) ) {
+                throw new ConfigException("draft.cookie は配列である必要があります。");
+            }
+            $path = $draft['cookie']['path'] ?? '/';
+            if ( $path === '/' ) {
+                error_log(
+                    "[mailform] WARN: draft.cookie.path が '/' のため、draft Cookie が全エンドポイントに送信されます。"
+                    . "/<form-path>/ に絞ることを推奨します。"
+                );
+            }
+        }
+
+        // consent セクション
+        if ( isset($draft['consent']) ) {
+            self::validateDraftConsent($draft['consent']);
+        }
+
+        // blocked_fields セクション
+        if ( isset($draft['blocked_fields']) && ! is_array($draft['blocked_fields']) ) {
+            throw new ConfigException("draft.blocked_fields は配列である必要があります。");
+        }
+
+        // 危険フィールド名のチェック（強制除外されるが警告は出す）
+        $dangerous = DraftManager::detectDangerousFields($draft['fields'], $draft['blocked_fields'] ?? []);
+        if ( ! empty($dangerous) ) {
+            error_log(
+                "[mailform] WARN: draft.fields に password / credit-card 系フィールドが含まれています: "
+                . implode(', ', $dangerous)
+                . "。これらは draft 保存対象から強制除外されます。"
+            );
+        }
+    }
+
+
+    /**
+     * draft.consent セクションの検証。
+     */
+    private static function validateDraftConsent( $consent ) : void {
+        if ( ! is_array($consent) ) {
+            throw new ConfigException("draft.consent は配列である必要があります。");
+        }
+
+        $validModes = [
+            DraftConsent::MODE_BUILTIN,
+            DraftConsent::MODE_CALLBACK,
+            DraftConsent::MODE_DISABLED,
+        ];
+        if ( isset($consent['mode']) && ! in_array($consent['mode'], $validModes, true) ) {
+            throw new ConfigException(
+                "draft.consent.mode は " . implode(' / ', $validModes) . " のいずれかである必要があります。"
+                . " 現在: '" . (string) $consent['mode'] . "'"
+            );
+        }
+
+        $validBehaviors = [
+            DraftConsent::BEHAVIOR_OPT_IN,
+            DraftConsent::BEHAVIOR_OPT_OUT,
+        ];
+        if ( isset($consent['behavior']) && ! in_array($consent['behavior'], $validBehaviors, true) ) {
+            throw new ConfigException(
+                "draft.consent.behavior は " . implode(' / ', $validBehaviors) . " のいずれかである必要があります。"
+                . " 現在: '" . (string) $consent['behavior'] . "'"
+            );
+        }
+
+        // callback モードは check_js 必須
+        if ( ( $consent['mode'] ?? null ) === DraftConsent::MODE_CALLBACK && empty($consent['check_js']) ) {
+            throw new ConfigException(
+                "draft.consent.mode='callback' のときは check_js を指定してください"
+                . "（CMP の同意状態を返す JS 式、例: window.OnetrustActiveGroups?.includes('C0003')）。"
+            );
         }
     }
 

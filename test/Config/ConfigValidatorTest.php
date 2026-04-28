@@ -15,6 +15,11 @@ class ConfigValidatorTest extends TestCase {
         ];
     }
 
+
+    private function validDraftKey() : string {
+        return str_repeat("\x00", SODIUM_CRYPTO_SECRETBOX_KEYBYTES);
+    }
+
     // ---- 必須キー ----
 
     public function test_validation_欠落で例外() : void {
@@ -134,6 +139,169 @@ class ConfigValidatorTest extends TestCase {
             'rate_limit' => [
                 'enabled' => false,
                 'endpoints' => ['anything_goes' => []],
+            ],
+        ]);
+        $this->assertTrue(true);
+    }
+
+    // ---- draft ----
+
+    public function test_draft_セクション無しは_スルー() : void {
+        ConfigValidator::validate($this->validBase());
+        $this->assertTrue(true);
+    }
+
+    public function test_draft_最小設定で_OK() : void {
+        ConfigValidator::validate($this->validBase() + [
+            'draft' => [
+                'fields'         => [ 'name', 'message' ],
+                'encryption_key' => $this->validDraftKey(),
+            ],
+        ]);
+        $this->assertTrue(true);
+    }
+
+    public function test_draft_fields欠落で例外() : void {
+        $this->expectException(ConfigException::class);
+        $this->expectExceptionMessage('draft.fields は必須');
+        ConfigValidator::validate($this->validBase() + [
+            'draft' => [ 'encryption_key' => $this->validDraftKey() ],
+        ]);
+    }
+
+    public function test_draft_fields空配列で例外() : void {
+        $this->expectException(ConfigException::class);
+        $this->expectExceptionMessage('非空の配列');
+        ConfigValidator::validate($this->validBase() + [
+            'draft' => [
+                'fields'         => [],
+                'encryption_key' => $this->validDraftKey(),
+            ],
+        ]);
+    }
+
+    public function test_draft_fields要素が文字列以外で例外() : void {
+        $this->expectException(ConfigException::class);
+        $this->expectExceptionMessage('draft.fields[0]');
+        ConfigValidator::validate($this->validBase() + [
+            'draft' => [
+                'fields'         => [ 123 ],
+                'encryption_key' => $this->validDraftKey(),
+            ],
+        ]);
+    }
+
+    public function test_draft_encryption_key欠落で例外() : void {
+        $this->expectException(ConfigException::class);
+        $this->expectExceptionMessage('draft.encryption_key は必須');
+        ConfigValidator::validate($this->validBase() + [
+            'draft' => [ 'fields' => [ 'name' ] ],
+        ]);
+    }
+
+    public function test_draft_encryption_key不正サイズで例外() : void {
+        $this->expectException(ConfigException::class);
+        $this->expectExceptionMessage('バイトである必要');
+        ConfigValidator::validate($this->validBase() + [
+            'draft' => [
+                'fields'         => [ 'name' ],
+                'encryption_key' => 'short',
+            ],
+        ]);
+    }
+
+    public function test_draft_compressが負の整数で例外() : void {
+        $this->expectException(ConfigException::class);
+        $this->expectExceptionMessage('draft.compress');
+        ConfigValidator::validate($this->validBase() + [
+            'draft' => [
+                'fields'         => [ 'name' ],
+                'encryption_key' => $this->validDraftKey(),
+                'compress'       => -1,
+            ],
+        ]);
+    }
+
+    public function test_draft_consent_modeが不正値で例外() : void {
+        $this->expectException(ConfigException::class);
+        $this->expectExceptionMessage('draft.consent.mode');
+        ConfigValidator::validate($this->validBase() + [
+            'draft' => [
+                'fields'         => [ 'name' ],
+                'encryption_key' => $this->validDraftKey(),
+                'consent'        => [ 'mode' => 'invalid' ],
+            ],
+        ]);
+    }
+
+    public function test_draft_consent_behaviorが不正値で例外() : void {
+        $this->expectException(ConfigException::class);
+        $this->expectExceptionMessage('draft.consent.behavior');
+        ConfigValidator::validate($this->validBase() + [
+            'draft' => [
+                'fields'         => [ 'name' ],
+                'encryption_key' => $this->validDraftKey(),
+                'consent'        => [ 'behavior' => 'maybe' ],
+            ],
+        ]);
+    }
+
+    public function test_draft_consent_callbackで_check_js欠落は例外() : void {
+        $this->expectException(ConfigException::class);
+        $this->expectExceptionMessage("check_js");
+        ConfigValidator::validate($this->validBase() + [
+            'draft' => [
+                'fields'         => [ 'name' ],
+                'encryption_key' => $this->validDraftKey(),
+                'consent'        => [ 'mode' => 'callback' ],
+            ],
+        ]);
+    }
+
+    public function test_draft_consent_callbackで_check_jsありは_OK() : void {
+        ConfigValidator::validate($this->validBase() + [
+            'draft' => [
+                'fields'         => [ 'name' ],
+                'encryption_key' => $this->validDraftKey(),
+                'consent'        => [
+                    'mode'     => 'callback',
+                    'check_js' => 'window.OnetrustActiveGroups?.includes("C0003")',
+                ],
+            ],
+        ]);
+        $this->assertTrue(true);
+    }
+
+    public function test_draft_blocked_fields_配列以外で例外() : void {
+        $this->expectException(ConfigException::class);
+        ConfigValidator::validate($this->validBase() + [
+            'draft' => [
+                'fields'         => [ 'name' ],
+                'encryption_key' => $this->validDraftKey(),
+                'blocked_fields' => 'not-an-array',
+            ],
+        ]);
+    }
+
+    public function test_draft_全部入りでOK() : void {
+        ConfigValidator::validate($this->validBase() + [
+            'draft' => [
+                'fields'         => [ 'name', 'email', 'message' ],
+                'encryption_key' => $this->validDraftKey(),
+                'compress'       => 512,
+                'max_bytes'      => 7000,
+                'split'          => 5,
+                'ttl'            => 86400,
+                'cookie'         => [
+                    'name_prefix' => 'mailform_draft_contact',
+                    'path'        => '/contact/',
+                ],
+                'consent'        => [
+                    'mode'           => 'builtin',
+                    'behavior'       => 'opt-in',
+                    'policy_version' => '2026-04-28',
+                ],
+                'blocked_fields' => [ 'mynumber' ],
             ],
         ]);
         $this->assertTrue(true);
