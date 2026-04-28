@@ -2,7 +2,7 @@
 
 PHP メールフォームライブラリ。**多段防御セキュリティ**（CSRF / Honeypot / レート制限 / AI スパム判定）と**入力途中データの一時保存**（HttpOnly Cookie + 暗号化）を内蔵。
 
-> このリポジトリは Composer 配布用です。開発リポジトリは `wttks/mailform-dev`（モノレポ）から
+> このリポジトリは Composer 配布用です。開発リポジトリは `wttks/mailform-source`（モノレポ）から
 > CI で自動的に subtree split されます。**Issue / PR は開発リポジトリにお願いします。**
 
 ## インストール
@@ -57,7 +57,7 @@ $form->receive();   // POST なら処理、GET なら何もしない
 
 ## ドキュメント
 
-開発リポジトリ `wttks/mailform-dev` の `docs/` 配下:
+開発リポジトリ `wttks/mailform-source` の `docs/` 配下:
 
 - `README.md` — プロジェクト概要・クイックスタート
 - `docs/CONFIG.md` — 設定リファレンス（draft 機能含む）
@@ -70,7 +70,7 @@ $form->receive();   // POST なら処理、GET なら何もしない
 
 ## サンプル
 
-開発リポジトリ `wttks/mailform-dev` の `public/` 配下に 4 サンプル同梱:
+開発リポジトリ `wttks/mailform-source` の `public/` 配下に 4 サンプル同梱:
 
 - `contact/` — 直接送信フォーム
 - `confirm-sample/` — 確認画面付きフォーム
@@ -81,7 +81,7 @@ $form->receive();   // POST なら処理、GET なら何もしない
 
 開発・Issue・PR は開発リポジトリへ:
 
-https://github.com/wttks/mailform-dev
+https://github.com/wttks/mailform-source
 
 ## ライセンス
 
