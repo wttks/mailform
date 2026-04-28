@@ -4,6 +4,7 @@ namespace AIJOH\Form;
 
 use AIJOH\AISpam\AISpamDetector;
 use AIJOH\AISpam\SpamSession;
+use AIJOH\Form\Draft\DraftManager;
 use AIJOH\Http\Request;
 use AIJOH\Lang\Translator;
 use AIJOH\Http\Response;
@@ -44,6 +45,9 @@ class Form implements FormBase {
     /** @var string AI スパム判定で弾かれた際にユーザーに表示するメッセージ */
     private string $spamBlockMessage;
 
+    /** @var DraftManager|null draft 機能（'draft' 設定がある場合のみ初期化） */
+    private ?DraftManager $draftManager = null;
+
 
     public function __construct( array $config ) {
         if ( isset($config['lang']) && is_string($config['lang']) && $config['lang'] !== '' ) {
@@ -59,6 +63,9 @@ class Form implements FormBase {
         $this->formSession      = new FormSession();
         $this->spamBlockMessage = $config['ai_spam']['block_message']
             ?? '送信内容に問題が検出されました。お手数ですがお電話でお問い合わせください。';
+        if ( isset($config['draft']) && is_array($config['draft']) ) {
+            $this->draftManager = new DraftManager($config['draft']);
+        }
     }
 
 
@@ -92,9 +99,22 @@ class Form implements FormBase {
             return;
         }
 
-        // _action=validate ならバリデーションのみ実行（リアルタイム検証用）
-        if ( $request->post()->get('_action', '') === 'validate' ) {
+        // _action 分岐
+        $action = $request->post()->get('_action', '');
+        if ( $action === 'validate' ) {
             $this->receiveValidateOnly($request);
+            return;
+        }
+        if ( $action === 'draft_save' ) {
+            $this->receiveDraftSave($request);
+            return;
+        }
+        if ( $action === 'draft_restore' ) {
+            $this->receiveDraftRestore();
+            return;
+        }
+        if ( $action === 'draft_consent' ) {
+            $this->receiveDraftConsent($request);
             return;
         }
 
@@ -144,6 +164,7 @@ class Form implements FormBase {
             $sendConfig = $formatter->formatAll($this->sendConfig);
             $sender     = new Sender($sendConfig);
             $sender->sendAll($formatter);
+            $this->draftManager?->clear();
             Response::jsonResults(true, '送信が完了しました。', null, $this->completeUrl);
         } catch ( SendException $se ) {
             Response::jsonResults(false, $se->getMessage());
@@ -204,6 +225,7 @@ class Form implements FormBase {
             $sender     = new Sender($sendConfig);
             $sender->sendAll($formatter);
             $this->formSession->clear();
+            $this->draftManager?->clear();
             Response::jsonResults(true, '送信が完了しました。', null, $this->completeUrl);
         } catch ( SendException $se ) {
             Response::jsonResults(false, $se->getMessage());
@@ -218,6 +240,144 @@ class Form implements FormBase {
      */
     public function getConfirmData() : array {
         return $this->formSession->getConfirmItems();
+    }
+
+
+    // ====================================================================
+    //  draft 機能（パターン B: PHP テンプレ向け公開 API）
+    // ====================================================================
+
+
+    /**
+     * draft 機能が有効か。
+     */
+    public function isDraftEnabled() : bool {
+        return $this->draftManager !== null;
+    }
+
+
+    /**
+     * draft Cookie から特定フィールドの保存値を取得する（パターン B）。
+     * PHP テンプレで `<input value="<?= $form->getDraftValue('name') ?>">` のように使う。
+     *
+     * @param string $field フィールド名
+     * @param mixed $default 未保存時のデフォルト値
+     */
+    public function getDraftValue( string $field, mixed $default = '' ) : mixed {
+        if ( $this->draftManager === null ) {
+            return $default;
+        }
+        $values = $this->draftManager->restore();
+        return $values[ $field ] ?? $default;
+    }
+
+
+    /**
+     * draft Cookie から全保存値を取得する（パターン B）。
+     */
+    public function getDraftValues() : array {
+        if ( $this->draftManager === null ) {
+            return [];
+        }
+        return $this->draftManager->restore();
+    }
+
+
+    /**
+     * JS 用初期データを返す。`<form data-mailform-draft-config="...">` の data 属性 や
+     * `<script type="application/json">` で埋め込んで JS 側に渡す想定。
+     *
+     * @return array{enabled: bool, consent: array, debounce_ms: int}
+     */
+    public function getDraftClientConfig() : array {
+        if ( $this->draftManager === null ) {
+            return [ 'enabled' => false ];
+        }
+        $consent = $this->draftManager->getConsent();
+        return [
+            'enabled' => true,
+            'consent' => [
+                'mode'      => $consent->getMode(),
+                'behavior'  => $consent->getBehavior(),
+                'isAllowed' => $this->draftManager->isAllowed(),
+                'managed'   => $consent->isManagedByMailform(),
+            ],
+            'debounce_ms' => 800,
+        ];
+    }
+
+
+    // ====================================================================
+    //  draft 機能（ajax 受け口、Form::receive() から呼ばれる）
+    // ====================================================================
+
+
+    /**
+     * `_action=draft_save`: POST データを draft Cookie に保存する。
+     */
+    private function receiveDraftSave( Request $request ) : void {
+        if ( $this->draftManager === null ) {
+            Response::jsonResults(false, 'draft 機能は有効化されていません。');
+            return;
+        }
+        if ( ! $this->draftManager->isAllowed() ) {
+            Response::jsonResults(false, '同意がないため保存できません。');
+            return;
+        }
+        $posted = $request->post()->getAll();
+        // _csrf_token / _action / _step 等の内部フィールドは除外
+        $filtered = array_filter(
+            $posted,
+            fn( $k ) => ! str_starts_with((string) $k, '_'),
+            ARRAY_FILTER_USE_KEY,
+        );
+        $this->draftManager->save($filtered);
+        Response::jsonResults(true);
+    }
+
+
+    /**
+     * `_action=draft_restore`: draft Cookie の値を JSON で返す（パターン A fallback）。
+     * 純 HTML フォームで PHP テンプレが使えない場合に JS 側から呼ぶ。
+     */
+    private function receiveDraftRestore() : void {
+        if ( $this->draftManager === null ) {
+            Response::jsonResults(false, 'draft 機能は有効化されていません。');
+            return;
+        }
+        if ( ! $this->draftManager->isAllowed() ) {
+            Response::jsonResults(true, null, [], null);
+            return;
+        }
+        $values = $this->draftManager->restore();
+        Response::jsonResults(true, null, $values, null);
+    }
+
+
+    /**
+     * `_action=draft_consent`: 同意状態を Cookie に書き込む（builtin モード用）。
+     * POST `consent` パラメータで 'granted' または 'revoked' を受け取る。
+     * 同時に POST `discard=1` が来ていれば draft データも削除する（拒否＝過去の保存も消したい）。
+     */
+    private function receiveDraftConsent( Request $request ) : void {
+        if ( $this->draftManager === null ) {
+            Response::jsonResults(false, 'draft 機能は有効化されていません。');
+            return;
+        }
+        if ( ! $this->draftManager->isManagedConsent() ) {
+            Response::jsonResults(false, 'mailform は同意管理を行わない設定です。');
+            return;
+        }
+        $status = $request->post()->get('consent', '');
+        if ( ! is_string($status) || ! in_array($status, [ 'granted', 'revoked' ], true) ) {
+            Response::jsonResults(false, 'consent は granted または revoked を指定してください。');
+            return;
+        }
+        $this->draftManager->setConsent($status);
+        if ( $status === 'revoked' || $request->post()->get('discard') === '1' ) {
+            $this->draftManager->clear();
+        }
+        Response::jsonResults(true);
     }
 
 
