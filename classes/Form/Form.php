@@ -339,6 +339,7 @@ class Form implements FormBase {
     /**
      * `_action=draft_restore`: draft Cookie の値を JSON で返す（パターン A fallback）。
      * 純 HTML フォームで PHP テンプレが使えない場合に JS 側から呼ぶ。
+     * レスポンス形式: { "status": true, "values": { "field" => value, ... } }
      */
     private function receiveDraftRestore() : void {
         if ( $this->draftManager === null ) {
@@ -346,11 +347,12 @@ class Form implements FormBase {
             return;
         }
         if ( ! $this->draftManager->isAllowed() ) {
-            Response::jsonResults(true, null, [], null);
-            return;
+            Response::json([ 'status' => true, 'values' => new \stdClass() ]);
+            exit;
         }
         $values = $this->draftManager->restore();
-        Response::jsonResults(true, null, $values, null);
+        Response::json([ 'status' => true, 'values' => $values ?: new \stdClass() ]);
+        exit;
     }
 
 
