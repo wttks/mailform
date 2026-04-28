@@ -27,6 +27,8 @@
     "ext-mbstring": "*",
     "ext-fileinfo": "*",
     "ext-curl": "*",
+    "ext-sodium": "*",
+    "ext-zlib": "*",
     "phpmailer/phpmailer": "^6.9",
     "curl/curl": "^2.5"
   },
