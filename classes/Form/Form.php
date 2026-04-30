@@ -218,6 +218,14 @@ class Form implements FormBase {
             return;
         }
 
+        // 添付ファイルが GC で消えていた場合は明確なエラーで返す
+        // （以前は黙って null になり、メール送信時に添付なしで送られていた）
+        if ( $this->formSession->hasMissingUploads() ) {
+            $this->formSession->clear();
+            Response::jsonResults(false, '添付ファイルの一時保存期間が過ぎました。最初からやり直してください。');
+            return;
+        }
+
         // 念のため確認 → 送信ステップでも判定する（キャッシュにヒットするので追加コストは無い）
         $this->checkSpamOrAbort($formData->getData());
 

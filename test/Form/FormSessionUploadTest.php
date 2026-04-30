@@ -122,6 +122,54 @@ class FormSessionUploadTest extends TestCase {
     }
 
 
+    public function test_restore_で添付ファイル消失時_hasMissingUploads_が_true(): void {
+        $upload = $this->buildFakeUpload('document', 'c.txt', 'Z', 'text/plain');
+        $formData = new FormData();
+        $formData->setData([ 'name' => '田中', 'document' => $upload ]);
+
+        $session = new FormSession();
+        $session->save($formData);
+        unlink($_SESSION['_form_data']['document']['persisted_path']);
+
+        $session->restore();
+        $this->assertTrue($session->hasMissingUploads());
+    }
+
+
+    public function test_restore_で添付ファイルが残っていれば_hasMissingUploads_は_false(): void {
+        $upload = $this->buildFakeUpload('document', 'd.txt', 'W', 'text/plain');
+        $formData = new FormData();
+        $formData->setData([ 'name' => '田中', 'document' => $upload ]);
+
+        $session = new FormSession();
+        $session->save($formData);
+        $session->restore();
+        $this->assertFalse($session->hasMissingUploads());
+    }
+
+
+    public function test_hasMissingUploads_は_restore_毎にリセットされる(): void {
+        // 1 回目の restore で missing 検出
+        $upload1 = $this->buildFakeUpload('document', 'e.txt', 'A', 'text/plain');
+        $fd1 = new FormData();
+        $fd1->setData([ 'document' => $upload1 ]);
+
+        $session = new FormSession();
+        $session->save($fd1);
+        unlink($_SESSION['_form_data']['document']['persisted_path']);
+        $session->restore();
+        $this->assertTrue($session->hasMissingUploads());
+
+        // 2 回目の restore で別のセッション（添付なし）
+        $session->clear();
+        $fd2 = new FormData();
+        $fd2->setData([ 'name' => '田中' ]);
+        $session->save($fd2);
+        $session->restore();
+        $this->assertFalse($session->hasMissingUploads());
+    }
+
+
     public function test_save_を_2回呼ぶと_前回の一時ファイルは破棄される(): void {
         $u1 = $this->buildFakeUpload('document', 'first.txt', 'first', 'text/plain');
         $fd1 = new FormData();

@@ -19,8 +19,20 @@ class FormSession {
 
     private Session $session;
 
+    /** restore() 時に添付ファイルが GC で消えていれば true */
+    private bool $missingUploadDetected = false;
+
     public function __construct() {
         $this->session = Session::getInstance();
+    }
+
+
+    /**
+     * 直前の restore() で添付ファイルが GC により失われていたかを返す。
+     * Form::receiveConfirmStep でこれが true なら「セッションがタイムアウト」エラーで返す。
+     */
+    public function hasMissingUploads() : bool {
+        return $this->missingUploadDetected;
     }
 
     /**
@@ -66,6 +78,7 @@ class FormSession {
             return null;
         }
 
+        $this->missingUploadDetected = false;   // 毎回リセット
         $data = $this->unserializeData($data);
         $formData = new FormData();
         $formData->setData($data);
@@ -188,6 +201,9 @@ class FormSession {
         if ( ( $value['__type'] ?? '' ) === 'upload_file' ) {
             $path = $value['persisted_path'] ?? '';
             if ( $path === '' || ! is_file($path) ) {
+                // 確認画面の送信時に添付ファイルが GC で消えていた → 検出フラグを立てる
+                // restore() 側で確認してセッションクリア + 明確なエラー表示する
+                $this->missingUploadDetected = true;
                 return null;
             }
             return \AIJOH\Http\UploadFile::fromPersisted(

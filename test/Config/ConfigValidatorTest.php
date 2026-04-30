@@ -382,4 +382,62 @@ class ConfigValidatorTest extends TestCase {
         $this->assertTrue(true);
     }
 
+    // ---- redirect URL ----
+
+    public function test_complete_url_javascript_スキームで例外() : void {
+        $this->expectException(ConfigException::class);
+        $this->expectExceptionMessage('javascript:');
+        ConfigValidator::validate($this->validBase() + [
+            'complete_url' => 'javascript:alert(1)',
+        ]);
+    }
+
+    public function test_complete_url_data_スキームで例外() : void {
+        $this->expectException(ConfigException::class);
+        ConfigValidator::validate($this->validBase() + [
+            'complete_url' => 'data:text/html,<script>alert(1)</script>',
+        ]);
+    }
+
+    public function test_complete_url_vbscript_スキームで例外() : void {
+        $this->expectException(ConfigException::class);
+        ConfigValidator::validate($this->validBase() + [
+            'complete_url' => 'vbscript:msgbox(1)',
+        ]);
+    }
+
+    public function test_complete_url_file_URL_で例外() : void {
+        $this->expectException(ConfigException::class);
+        ConfigValidator::validate($this->validBase() + [
+            'complete_url' => 'file:///etc/passwd',
+        ]);
+    }
+
+    public function test_confirm_url_危険スキームで例外() : void {
+        $this->expectException(ConfigException::class);
+        ConfigValidator::validate($this->validBase() + [
+            'confirm_url' => 'javascript:alert(1)',
+        ]);
+    }
+
+    public function test_complete_url_相対パスはOK() : void {
+        ConfigValidator::validate($this->validBase() + [
+            'complete_url' => '/contact/thanks.html',
+        ]);
+        $this->assertTrue(true);
+    }
+
+    public function test_complete_url_同一ホストの絶対URLはOK() : void {
+        $_SERVER['HTTP_HOST'] = 'example.com';
+        ConfigValidator::validate($this->validBase() + [
+            'complete_url' => 'https://example.com/thanks',
+        ]);
+        $this->assertTrue(true);
+    }
+
+    public function test_complete_url_未設定はスルー() : void {
+        ConfigValidator::validate($this->validBase());
+        $this->assertTrue(true);
+    }
+
 }

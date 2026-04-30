@@ -27,6 +27,61 @@ class ConfigValidator {
         self::validateAiSpam($config);
         self::validateRateLimit($config);
         self::validateDraft($config);
+        self::validateRedirectUrls($config);
+    }
+
+
+    /**
+     * complete_url / confirm_url の値検証（Open Redirect 対策）。
+     *
+     * mailform は config に hardcoded された URL しかリダイレクト先にできないため、
+     * 攻撃者が動的にリダイレクト先を決める経路は通常存在しない。ただし設置者が
+     * config に危険な URL を書いてしまうのを防ぐため、起動時に値を検証する。
+     *
+     * - `javascript:` `data:` `vbscript:` `file:` 等のスキームは ConfigException
+     * - 絶対 URL でホスト指定がある場合、現在のリクエストホストと違えば WARN ログ
+     */
+    private static function validateRedirectUrls( array $config ) : void {
+        foreach ( [ 'complete_url', 'confirm_url' ] as $key ) {
+            $url = $config[ $key ] ?? '';
+            if ( ! is_string($url) || $url === '' ) {
+                continue;
+            }
+            self::assertSafeRedirectUrl($url, $key);
+        }
+    }
+
+
+    /**
+     * リダイレクト URL が安全か検証する。
+     * @throws ConfigException 危険スキームの場合
+     */
+    private static function assertSafeRedirectUrl( string $url, string $configKey ) : void {
+        // 危険スキーム: javascript:, data:, vbscript:, file:, ftp:, jar: 等
+        $dangerousSchemes = [ 'javascript', 'data', 'vbscript', 'file', 'jar', 'view-source' ];
+        $lower = strtolower(trim($url));
+        foreach ( $dangerousSchemes as $scheme ) {
+            if ( str_starts_with($lower, $scheme . ':') ) {
+                throw new ConfigException(
+                    "{$configKey} に危険なスキーム ({$scheme}:) が含まれています: '{$url}'"
+                );
+            }
+        }
+        // プロトコル相対 URL `//host/path` も外部ホスト向けの可能性があるので警告
+        if ( str_starts_with($url, '//') ) {
+            error_log("[ConfigValidator] WARN: {$configKey} がプロトコル相対 URL です。"
+                . "外部ホストにリダイレクトされる可能性があります: {$url}");
+            return;
+        }
+        // 絶対 URL でホストが現在のリクエストと違うなら WARN
+        if ( preg_match('/^https?:\/\//i', $url) === 1 ) {
+            $configHost = parse_url($url, PHP_URL_HOST);
+            $requestHost = $_SERVER['HTTP_HOST'] ?? '';
+            if ( $configHost && $requestHost && strcasecmp($configHost, $requestHost) !== 0 ) {
+                error_log("[ConfigValidator] WARN: {$configKey} のホストがリクエストと異なります。"
+                    . "外部リダイレクト: config={$configHost}, request={$requestHost}");
+            }
+        }
     }
 
 
