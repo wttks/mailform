@@ -5,7 +5,7 @@ namespace AIJOH\Sender\Send;
 use AIJOH\Http\UploadFile;
 use AIJOH\Output\Mailer\MailAddress;
 use AIJOH\Output\Mailer\MailAddressParser;
-use AIJOH\Output\Mailer\PHPMailSender;
+use AIJOH\Output\Mailer\MailSenderFactory;
 use AIJOH\Output\Mailer\SendMailException;
 use AIJOH\Results\FormData;
 use AIJOH\Validation\Exception\ValidationException;
@@ -67,6 +67,12 @@ class SendMailAdmin extends AbstractSendBase {
             'message' => [
                 'required' => '本文を入力してください。',
             ]
+        ],
+        'mailer'  => [
+            'rule' => [ 'nullable' ],
+        ],
+        'attachments' => [
+            'rule' => [ 'nullable' ],
         ],
     ];
     
@@ -135,7 +141,7 @@ class SendMailAdmin extends AbstractSendBase {
         $subject = $this->getStringValue('subject');
         $body = $this->getStringValue('body');
         
-        $mailer = new PHPMailSender();
+        $mailer = MailSenderFactory::create($this->config['mailer'] ?? []);
         $mailer->setFromArray($from)
             ->addToList($to)
             ->addCCList($cc)
@@ -144,12 +150,16 @@ class SendMailAdmin extends AbstractSendBase {
             ->setSubject($subject)
             ->setBody($body);
         
+        // フォーム経由でアップロードされたファイルを管理者にそのまま添付
         $attachments = $this->format->getFormData()->getAttachmentList();
         foreach ( $attachments as $attachment ) {
             if ( $attachment instanceof UploadFile ) {
                 $mailer->addAttachmentFile($attachment->getTmpName(), $attachment->getName());
             }
         }
+
+        // 設置者が config 'attachments' で指定した固定ファイルも追加
+        $this->addStaticAttachmentsTo($mailer);
 
         return $mailer->send();
     }

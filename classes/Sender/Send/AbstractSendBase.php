@@ -72,4 +72,59 @@ abstract class AbstractSendBase implements Send {
      * @return bool
      */
     public abstract function send() : bool;
+
+
+    /**
+     * 設定 'attachments' を解析して [ ['path' => ..., 'name' => ...], ... ] の配列に正規化する。
+     *
+     * 対応形式:
+     *   - 'attachments' => [ '/path/to/file.pdf', ... ]
+     *   - 'attachments' => [ ['path' => '/path/to/x.pdf', 'name' => 'ご案内.pdf'], ... ]
+     *   - 'attachments' => fn(array $data) => [...]    // フォーム値で動的決定
+     *
+     * 不正形式の要素は WARN ログを出してスキップ。
+     *
+     * @return array<int, array{path: string, name: string}>
+     */
+    protected function resolveStaticAttachments() : array {
+        $config = $this->config['attachments'] ?? [];
+        if ( is_callable($config) ) {
+            $data = $this->format !== null ? $this->format->getFormData()->getData() : [];
+            $config = $config($data);
+        }
+        if ( ! is_array($config) ) {
+            return [];
+        }
+        $result = [];
+        foreach ( $config as $i => $item ) {
+            if ( is_string($item) ) {
+                $result[] = [ 'path' => $item, 'name' => '' ];
+                continue;
+            }
+            if ( is_array($item) && isset($item['path']) && is_string($item['path']) ) {
+                $result[] = [
+                    'path' => $item['path'],
+                    'name' => (string) ( $item['name'] ?? '' ),
+                ];
+                continue;
+            }
+            error_log("[AbstractSendBase] invalid attachment at index {$i}, skipped");
+        }
+        return $result;
+    }
+
+
+    /**
+     * 解決済みの static attachments を MailSendBase 系の mailer に追加する。
+     * 存在しないファイルは WARN ログを出してスキップ（他の添付は正常送信）。
+     */
+    protected function addStaticAttachmentsTo( \AIJOH\Output\Mailer\MailSendBase $mailer ) : void {
+        foreach ( $this->resolveStaticAttachments() as $att ) {
+            if ( $att['path'] === '' || ! is_file($att['path']) ) {
+                error_log("[Send] static attachment file not found: '{$att['path']}'");
+                continue;
+            }
+            $mailer->addAttachmentFile($att['path'], $att['name']);
+        }
+    }
 }

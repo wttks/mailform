@@ -475,4 +475,144 @@ class ConfigValidatorTest extends TestCase {
         ]);
     }
 
+    // ---- sender.<key>.mailer ----
+
+    public function test_sender_mailer_配列でないと例外() : void {
+        $this->expectException(ConfigException::class);
+        $this->expectExceptionMessage('mailer は配列');
+        ConfigValidator::validate([
+            'validation' => [],
+            'sender'     => [
+                '管理者向けメール' => [ 'mailer' => 'invalid' ],
+            ],
+        ]);
+    }
+
+    public function test_sender_mailer_type_文字列でないと例外() : void {
+        $this->expectException(ConfigException::class);
+        $this->expectExceptionMessage('mailer.type');
+        ConfigValidator::validate([
+            'validation' => [],
+            'sender'     => [
+                '管理者向けメール' => [ 'mailer' => [ 'type' => 123 ] ],
+            ],
+        ]);
+    }
+
+    public function test_sender_mailer_未指定はOK() : void {
+        ConfigValidator::validate([
+            'validation' => [],
+            'sender'     => [
+                '管理者向けメール' => [ 'to' => 'a@b.com' ],
+            ],
+        ]);
+        $this->assertTrue(true);
+    }
+
+    public function test_sender_mailer_type_phpmailer_OK() : void {
+        ConfigValidator::validate([
+            'validation' => [],
+            'sender'     => [
+                '管理者向けメール' => [ 'mailer' => [ 'type' => 'phpmailer' ] ],
+            ],
+        ]);
+        $this->assertTrue(true);
+    }
+
+    // ---- sender.<key>.attachments ----
+
+    public function test_sender_attachments_文字列のみの配列でOK() : void {
+        ConfigValidator::validate([
+            'validation' => [],
+            'sender'     => [
+                '管理者向けメール' => [ 'attachments' => [ '/path/a.pdf', '/path/b.pdf' ] ],
+            ],
+        ]);
+        $this->assertTrue(true);
+    }
+
+    public function test_sender_attachments_path_name_配列でOK() : void {
+        ConfigValidator::validate([
+            'validation' => [],
+            'sender'     => [
+                '管理者向けメール' => [
+                    'attachments' => [
+                        [ 'path' => '/path/a.pdf', 'name' => '案内.pdf' ],
+                    ],
+                ],
+            ],
+        ]);
+        $this->assertTrue(true);
+    }
+
+    public function test_sender_attachments_Closureは検証スキップ() : void {
+        ConfigValidator::validate([
+            'validation' => [],
+            'sender'     => [
+                '管理者向けメール' => [
+                    'attachments' => fn() => [ '/path/a.pdf' ],
+                ],
+            ],
+        ]);
+        $this->assertTrue(true);
+    }
+
+    public function test_sender_attachments_配列以外で例外() : void {
+        $this->expectException(ConfigException::class);
+        ConfigValidator::validate([
+            'validation' => [],
+            'sender'     => [
+                '管理者向けメール' => [ 'attachments' => 'not-array' ],
+            ],
+        ]);
+    }
+
+    public function test_sender_attachments_path_キー欠落で例外() : void {
+        $this->expectException(ConfigException::class);
+        $this->expectExceptionMessage('path');
+        ConfigValidator::validate([
+            'validation' => [],
+            'sender'     => [
+                '管理者向けメール' => [
+                    'attachments' => [ [ 'name' => 'x' ] ],
+                ],
+            ],
+        ]);
+    }
+
+    public function test_sender_attachments_path_文字列でなくて例外() : void {
+        $this->expectException(ConfigException::class);
+        ConfigValidator::validate([
+            'validation' => [],
+            'sender'     => [
+                '管理者向けメール' => [
+                    'attachments' => [ [ 'path' => 123 ] ],
+                ],
+            ],
+        ]);
+    }
+
+    public function test_sender_attachments_name_文字列でなくて例外() : void {
+        $this->expectException(ConfigException::class);
+        $this->expectExceptionMessage('name');
+        ConfigValidator::validate([
+            'validation' => [],
+            'sender'     => [
+                '管理者向けメール' => [
+                    'attachments' => [ [ 'path' => '/x', 'name' => 123 ] ],
+                ],
+            ],
+        ]);
+    }
+
+    public function test_sender_attachments_要素が文字列_配列以外で例外() : void {
+        $this->expectException(ConfigException::class);
+        ConfigValidator::validate([
+            'validation' => [],
+            'sender'     => [
+                '管理者向けメール' => [ 'attachments' => [ 123 ] ],
+            ],
+        ]);
+    }
+
 }

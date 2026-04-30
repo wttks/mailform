@@ -5,7 +5,7 @@ namespace AIJOH\Sender\Send;
 use AIJOH\Http\UploadFile;
 use AIJOH\Output\Mailer\MailAddress;
 use AIJOH\Output\Mailer\MailAddressParser;
-use AIJOH\Output\Mailer\PHPMailSender;
+use AIJOH\Output\Mailer\MailSenderFactory;
 use AIJOH\Output\Mailer\SendMailException;
 use AIJOH\Validation\Exception\ValidationException;
 use AIJOH\Validation\Exception\ValidationRuleException;
@@ -47,6 +47,12 @@ class SendMailUser extends AbstractSendBase {
             'message' => [
                 'required' => '本文を入力してください。',
             ]
+        ],
+        'mailer'  => [
+            'rule' => [ 'nullable' ],
+        ],
+        'attachments' => [
+            'rule' => [ 'nullable' ],
         ],
     ];
     
@@ -98,27 +104,17 @@ class SendMailUser extends AbstractSendBase {
         
         $to = $this->getToAddress();
         
-        $mailer = new PHPMailSender();
+        $mailer = MailSenderFactory::create($this->config['mailer'] ?? []);
         $mailer->setFromArray((array)( $this->config['from'] ?? [] ))
             ->addToAddress($to)
             ->addReplyToList($this->config['reply_to'] ?? [])
             ->setSubject($subject)
             ->setBody($body);
-        
-        /*
-         * 添付ファイルは送信しない
-         *
-        $attachments = $this->format->getFormData()->getAttachmentList();
-        foreach ( $attachments as $attachment ) {
-            if( ! $attachment->exists() ){
-                continue;
-            }
-            if ( $attachment instanceof UploadFile ) {
-                $mailer->addAttachmentFile($attachment->getTmpName(), $attachment->getName());
-            }
-        }
-        */
-        
+
+        // フォーム経由の添付（入力者がアップロードしたファイル）は顧客向けには転送しない。
+        // 設置者が config 'attachments' で指定した固定ファイル（ホワイトペーパー等）を添付する。
+        $this->addStaticAttachmentsTo($mailer);
+
         return $mailer->send();
     }
 }

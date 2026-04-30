@@ -48,6 +48,76 @@ class ConfigValidator {
                 );
             }
         }
+        // 各 SendMail 設定（管理者向け / 顧客向け 等）の mailer / attachments を検証
+        foreach ( $sender as $key => $sendConfig ) {
+            if ( $key === 'max_recipients_per_request' ) {
+                continue;
+            }
+            if ( ! is_array($sendConfig) ) {
+                continue;
+            }
+            self::validateSenderMailer((string) $key, $sendConfig);
+            self::validateSenderAttachments((string) $key, $sendConfig);
+        }
+    }
+
+
+    /**
+     * 各 SendMail 設定の mailer 値を検証する。
+     */
+    private static function validateSenderMailer( string $sendKey, array $sendConfig ) : void {
+        if ( ! isset($sendConfig['mailer']) ) {
+            return;
+        }
+        $mailer = $sendConfig['mailer'];
+        if ( ! is_array($mailer) ) {
+            throw new ConfigException("sender.{$sendKey}.mailer は配列である必要があります。");
+        }
+        if ( isset($mailer['type']) && ! is_string($mailer['type']) ) {
+            throw new ConfigException("sender.{$sendKey}.mailer.type は文字列である必要があります。");
+        }
+        // type の値検証は Factory がランタイムで行う（独自登録 register() 後の実行時にも対応するため）
+    }
+
+
+    /**
+     * 各 SendMail 設定の attachments 値を検証する。
+     */
+    private static function validateSenderAttachments( string $sendKey, array $sendConfig ) : void {
+        if ( ! isset($sendConfig['attachments']) ) {
+            return;
+        }
+        $attachments = $sendConfig['attachments'];
+        // Closure (動的) は実行時評価なので config 検証はスキップ
+        if ( is_callable($attachments) ) {
+            return;
+        }
+        if ( ! is_array($attachments) ) {
+            throw new ConfigException(
+                "sender.{$sendKey}.attachments は配列または Closure である必要があります。"
+            );
+        }
+        foreach ( $attachments as $i => $item ) {
+            if ( is_string($item) ) {
+                continue;
+            }
+            if ( is_array($item) ) {
+                if ( ! isset($item['path']) || ! is_string($item['path']) ) {
+                    throw new ConfigException(
+                        "sender.{$sendKey}.attachments[{$i}] は path キーに文字列が必要です。"
+                    );
+                }
+                if ( isset($item['name']) && ! is_string($item['name']) ) {
+                    throw new ConfigException(
+                        "sender.{$sendKey}.attachments[{$i}].name は文字列である必要があります。"
+                    );
+                }
+                continue;
+            }
+            throw new ConfigException(
+                "sender.{$sendKey}.attachments[{$i}] は文字列 or 配列 ['path' => ..., 'name' => ...] である必要があります。"
+            );
+        }
     }
 
 
