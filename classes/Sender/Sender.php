@@ -2,6 +2,8 @@
 
 namespace AIJOH\Sender;
 
+use AIJOH\Output\Mailer\MailAddressParser;
+use AIJOH\Output\Mailer\SendMailException;
 use AIJOH\Results\Formatter\FormatBase;
 use AIJOH\Sender\Send\Send;
 use AIJOH\Util\StrUtil;
@@ -19,13 +21,26 @@ class Sender {
      * @var Send[]
      */
     private array $sendList = [];
-    
+
+    /**
+     * 1 リクエスト内で送信できる宛先の合計上限（to + cc + bcc を全 SendMail で合算）。
+     * Email Pumping 対策: 攻撃者が動的宛先で大量送信を試みるのを物理的に阻止する。
+     */
+    private int $maxRecipientsPerRequest;
+
+
     /**
      * データを送信するためのクラス
      * @param array $configAll
+     *   各キーは SendMail（'管理者向けメール' 等）の設定。
+     *   特殊キー 'max_recipients_per_request' が含まれていれば上限値として扱う（デフォルト 10）。
      * @throws SendException
      */
     public function __construct( array $configAll ) {
+        // 設定値を抽出して送信設定からは除外
+        $this->maxRecipientsPerRequest = (int) ( $configAll['max_recipients_per_request'] ?? 10 );
+        unset($configAll['max_recipients_per_request']);
+
         foreach ( $configAll as $key => $config ) {
             try {
                 $this->sendList[ $key ] = $this->buildSendClass($key, $config);
@@ -60,11 +75,65 @@ class Sender {
     }
     
     /**
+     * format 済み config から to + cc + bcc の合計宛先数を見積もる。
+     * Email Pumping 攻撃の前段検出用。
+     *
+     * @param array $configAll Formatter で動的宛先解決済みの sender config
+     */
+    public static function countRecipients( array $configAll ) : int {
+        $count = 0;
+        foreach ( $configAll as $key => $config ) {
+            if ( $key === 'max_recipients_per_request' ) {
+                continue;
+            }
+            if ( ! is_array($config) ) {
+                continue;
+            }
+            foreach ( [ 'to', 'cc', 'bcc' ] as $field ) {
+                if ( ! isset($config[ $field ]) ) {
+                    continue;
+                }
+                try {
+                    $addresses = MailAddressParser::parse($config[ $field ]);
+                    $count += count($addresses);
+                } catch ( SendMailException $e ) {
+                    // パース失敗は別の検証で弾かれるはず、ここでは計上しない
+                }
+            }
+        }
+        return $count;
+    }
+
+
+    /**
+     * 設定された上限を超える宛先数になっていないか検証する。
+     * @throws SendException 上限超過
+     */
+    private function assertRecipientLimit( array $configAll ) : void {
+        $count = self::countRecipients($configAll);
+        if ( $count > $this->maxRecipientsPerRequest ) {
+            error_log("[Sender] recipient limit exceeded: {$count} > {$this->maxRecipientsPerRequest} (Email Pumping 対策)");
+            throw new SendException(
+                'Sender',
+                "送信先が上限を超えています。フォーム設定を確認してください。"
+            );
+        }
+    }
+
+
+    /**
      * データの送信を行う。
      * @param FormatBase $format
      * @return void
      */
     public function sendAll( FormatBase $format ) {
+        // 動的宛先解決後の合計宛先数で Email Pumping 対策
+        $configAll = [];
+        foreach ( $this->sendList as $key => $send ) {
+            $configAll[ $key ] = $send->getConfig();
+        }
+        $this->assertRecipientLimit($configAll);
+
         foreach ( $this->sendList as $key => $send ) {
             $send->setFormat($format);
             try {

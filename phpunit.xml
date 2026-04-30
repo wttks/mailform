@@ -40,5 +40,8 @@
         <testsuite name="Output">
             <directory>test/Output</directory>
         </testsuite>
+        <testsuite name="Sender">
+            <directory>test/Sender</directory>
+        </testsuite>
     </testsuites>
 </phpunit>

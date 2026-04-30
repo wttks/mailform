@@ -440,4 +440,39 @@ class ConfigValidatorTest extends TestCase {
         $this->assertTrue(true);
     }
 
+    // ---- sender.max_recipients_per_request ----
+
+    public function test_max_recipients_per_request_正の整数はOK() : void {
+        ConfigValidator::validate([
+            'validation' => [],
+            'sender'     => [ 'max_recipients_per_request' => 5 ],
+        ]);
+        $this->assertTrue(true);
+    }
+
+    public function test_max_recipients_per_request_0で例外() : void {
+        $this->expectException(ConfigException::class);
+        $this->expectExceptionMessage('max_recipients_per_request');
+        ConfigValidator::validate([
+            'validation' => [],
+            'sender'     => [ 'max_recipients_per_request' => 0 ],
+        ]);
+    }
+
+    public function test_max_recipients_per_request_負の整数で例外() : void {
+        $this->expectException(ConfigException::class);
+        ConfigValidator::validate([
+            'validation' => [],
+            'sender'     => [ 'max_recipients_per_request' => -1 ],
+        ]);
+    }
+
+    public function test_max_recipients_per_request_文字列で例外() : void {
+        $this->expectException(ConfigException::class);
+        ConfigValidator::validate([
+            'validation' => [],
+            'sender'     => [ 'max_recipients_per_request' => '5' ],
+        ]);
+    }
+
 }

@@ -28,6 +28,26 @@ class ConfigValidator {
         self::validateRateLimit($config);
         self::validateDraft($config);
         self::validateRedirectUrls($config);
+        self::validateSender($config);
+    }
+
+
+    /**
+     * sender セクションの検証。max_recipients_per_request の値検証等。
+     */
+    private static function validateSender( array $config ) : void {
+        $sender = $config['sender'] ?? null;
+        if ( ! is_array($sender) ) {
+            return;
+        }
+        if ( isset($sender['max_recipients_per_request']) ) {
+            $max = $sender['max_recipients_per_request'];
+            if ( ! ( is_int($max) && $max > 0 ) ) {
+                throw new ConfigException(
+                    "sender.max_recipients_per_request は正の整数である必要があります。"
+                );
+            }
+        }
     }
 
 
