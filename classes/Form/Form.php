@@ -100,7 +100,8 @@ class Form implements FormBase {
         }
 
         // _action 分岐
-        $action = $request->post()->get('_action', '');
+        // HPP 対策: 配列を渡されても string として扱う（getString は配列なら default を返す）
+        $action = $request->post()->getString('_action', '');
         if ( $action === 'validate' ) {
             $this->receiveValidateOnly($request);
             return;
@@ -180,7 +181,8 @@ class Form implements FormBase {
      * _step=confirm → セッションから復元 → メール送信 → 完了ページへ
      */
     private function receiveConfirmFlow( Request $request ) : void {
-        $step = $request->post()->get('_step', 'input');
+        // HPP 対策: 配列を渡されても string として扱う
+        $step = $request->post()->getString('_step', 'input');
 
         if ( $step === 'confirm' ) {
             $this->receiveConfirmStep();

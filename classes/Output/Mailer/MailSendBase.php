@@ -440,8 +440,10 @@ abstract class MailSendBase {
      * 件名を設定する。
      * @param string $subject
      * @return self
+     * @throws SendMailException 件名に CRLF / NULL バイトが含まれている場合（ヘッダインジェクション対策）
      */
     public function setSubject( string $subject ) : self {
+        MailAddress::assertNoControlChars($subject, '件名');
         $this->subject = $subject;
         return $this;
     }

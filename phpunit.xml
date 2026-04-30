@@ -37,5 +37,8 @@
         <testsuite name="Http">
             <directory>test/Http</directory>
         </testsuite>
+        <testsuite name="Output">
+            <directory>test/Output</directory>
+        </testsuite>
     </testsuites>
 </phpunit>

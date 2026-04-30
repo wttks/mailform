@@ -123,14 +123,33 @@ class Post {
     
     /**
      * 指定した名前に対応するデータを取得する。
+     *
+     * **HPP（HTTP Parameter Pollution）注意**:
+     * クライアントが `name=A&name[]=B` のような送信をすると配列が返ることがある。
+     * 単一値前提の処理では呼び出し側で型チェック必須、または getString() を使うこと。
+     *
      * @param string $name
      * @param mixed|null $default
-     * @return mixed
+     * @return mixed string / array / null など $_POST と同じ型
      */
     public function get( string $name, mixed $default = null ) : mixed {
         $results = ArrayUtil::get($this->post, $name, $default);
         return $results;
-        
+    }
+
+
+    /**
+     * 指定キーの値を string として取得する（HPP 対策の安全な変種）。
+     * 配列値が来た場合は default を返す（攻撃者の HPP を構造的に防止）。
+     *
+     * 単一値を期待するロジック（CSRF token / _action / _step 等）で使う。
+     */
+    public function getString( string $name, string $default = '' ) : string {
+        $value = ArrayUtil::get($this->post, $name, $default);
+        if ( ! is_string($value) ) {
+            return $default;
+        }
+        return $value;
     }
     
     /**
