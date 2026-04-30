@@ -112,12 +112,13 @@ class UploadFile {
             return $this->file['type'] ?? '';
         }
         $tmpFile = $this->getTmpName();
-        if( empty($tmpFile) ){
+        if ( empty($tmpFile) ) {
             return '';
         }
 
-        $type = mime_content_type($tmpFile);
-        return $type !== false ? $type : $this->file['type'] ?? '';
+        // finfo ベースで MIME 判定（mime_content_type は廃止予定）
+        $type = \AIJOH\Util\FileUtil::getMimeType($tmpFile);
+        return $type !== '' ? $type : ( $this->file['type'] ?? '' );
     }
     
     

@@ -99,4 +99,87 @@ class FileUtilTest extends TestCase {
         $path = $this->createTextFile('test.txt');
         $this->assertFalse(FileUtil::isExcelFile($path));
     }
+
+
+    // ---- getMimeType (finfo ベース) ----
+
+    public function test_getMimeType_PNG画像_image_png(): void {
+        $path = $this->createPngFile('test.png');
+        $this->assertSame('image/png', FileUtil::getMimeType($path));
+    }
+
+
+    public function test_getMimeType_テキスト_text_plain(): void {
+        $path = $this->createTextFile('test.txt');
+        $this->assertStringStartsWith('text/', FileUtil::getMimeType($path));
+    }
+
+
+    public function test_getMimeType_存在しないファイル_空文字(): void {
+        $this->assertSame('', FileUtil::getMimeType('/nonexistent/path'));
+    }
+
+
+    // ---- matchesMagicBytes ----
+
+    public function test_matchesMagicBytes_PNG画像_PNG_signature_に一致(): void {
+        $path = $this->createPngFile('test.png');
+        $this->assertTrue(FileUtil::matchesMagicBytes($path, 'image/png'));
+    }
+
+
+    public function test_matchesMagicBytes_PNG画像_JPEG_signature_には不一致(): void {
+        $path = $this->createPngFile('test.png');
+        $this->assertFalse(FileUtil::matchesMagicBytes($path, 'image/jpeg'));
+    }
+
+
+    public function test_matchesMagicBytes_PDF_先頭_PDF_signature_に一致(): void {
+        $path = $this->tempDir . '/test.pdf';
+        file_put_contents($path, "%PDF-1.0\nbody");
+        $this->assertTrue(FileUtil::matchesMagicBytes($path, 'application/pdf'));
+    }
+
+
+    public function test_matchesMagicBytes_テーブル外の_MIME_は通過扱い(): void {
+        $path = $this->createTextFile('test.txt');
+        $this->assertTrue(FileUtil::matchesMagicBytes($path, 'application/x-unknown'));
+    }
+
+
+    public function test_matchesMagicBytes_存在しないファイルはfalse(): void {
+        $this->assertFalse(FileUtil::matchesMagicBytes('/nonexistent', 'image/png'));
+    }
+
+
+    // ---- isSafeFile (3 段検証) ----
+
+    public function test_isSafeFile_PNG_拡張子_MIME_signature_すべて一致なら_true(): void {
+        $path = $this->createPngFile('test.png');
+        $this->assertTrue(FileUtil::isSafeFile($path, 'png', 'image/png'));
+    }
+
+
+    public function test_isSafeFile_拡張子不一致は_false(): void {
+        $path = $this->createPngFile('test.png');
+        $this->assertFalse(FileUtil::isSafeFile($path, 'jpg', 'image/jpeg'));
+    }
+
+
+    public function test_isSafeFile_polyglot_PNG_拡張子だが_中身は_PHP_は_false(): void {
+        // 攻撃シナリオ: 拡張子は .png だが実体は <?php
+        $path = $this->tempDir . '/evil.png';
+        file_put_contents($path, "<?php phpinfo(); ?>");
+        // finfo は text/x-php 等を返すはずで MIME 不一致 → false
+        $this->assertFalse(FileUtil::isSafeFile($path, 'png', 'image/png'));
+    }
+
+
+    public function test_isSafeFile_polyglot_PNG_拡張子に_ZIP_signature_は_false(): void {
+        // 攻撃シナリオ: PNG 拡張子 + ZIP マジック
+        $path = $this->tempDir . '/evil.png';
+        file_put_contents($path, "PK\x03\x04rest_of_zip");
+        // finfo は application/zip 等を返すはずで MIME 不一致 → false
+        $this->assertFalse(FileUtil::isSafeFile($path, 'png', 'image/png'));
+    }
 }
