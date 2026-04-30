@@ -95,6 +95,81 @@ class ConfigValidatorTest extends TestCase {
         $this->assertTrue(true);
     }
 
+    // ---- ai_spam: fail_mode / max_input_bytes / cache_secret ----
+
+    public function test_ai_spam_fail_mode_が不正値で例外() : void {
+        $this->expectException(ConfigException::class);
+        $this->expectExceptionMessage('ai_spam.fail_mode');
+        ConfigValidator::validate($this->validBase() + [
+            'ai'      => ['provider' => 'claude_cli'],
+            'ai_spam' => [ 'enabled' => true, 'fail_mode' => 'invalid' ],
+        ]);
+    }
+
+    public function test_ai_spam_fail_mode_silent_block_は_OK() : void {
+        ConfigValidator::validate($this->validBase() + [
+            'ai'      => ['provider' => 'claude_cli'],
+            'ai_spam' => [ 'enabled' => true, 'fail_mode' => 'silent_block' ],
+        ]);
+        $this->assertTrue(true);
+    }
+
+    public function test_ai_spam_max_input_bytes_が0以下で例外() : void {
+        $this->expectException(ConfigException::class);
+        $this->expectExceptionMessage('max_input_bytes');
+        ConfigValidator::validate($this->validBase() + [
+            'ai'      => ['provider' => 'claude_cli'],
+            'ai_spam' => [ 'enabled' => true, 'max_input_bytes' => 0 ],
+        ]);
+    }
+
+    public function test_ai_spam_cache_有効で_cache_secret_欠落で例外() : void {
+        $this->expectException(ConfigException::class);
+        $this->expectExceptionMessage('cache_secret');
+        ConfigValidator::validate($this->validBase() + [
+            'ai'      => ['provider' => 'claude_cli'],
+            'ai_spam' => [ 'enabled' => true, 'cache' => true, 'cache_dir' => '/tmp' ],
+        ]);
+    }
+
+    public function test_ai_spam_cache_有効_かつ_cache_secret_短すぎで例外() : void {
+        $this->expectException(ConfigException::class);
+        $this->expectExceptionMessage('16 バイト');
+        ConfigValidator::validate($this->validBase() + [
+            'ai'      => ['provider' => 'claude_cli'],
+            'ai_spam' => [
+                'enabled'      => true,
+                'cache'        => true,
+                'cache_dir'    => '/tmp',
+                'cache_secret' => 'short',
+            ],
+        ]);
+    }
+
+    public function test_ai_spam_cache_有効_かつ_cache_secret_十分長で_OK() : void {
+        ConfigValidator::validate($this->validBase() + [
+            'ai'      => ['provider' => 'claude_cli'],
+            'ai_spam' => [
+                'enabled'      => true,
+                'cache'        => true,
+                'cache_dir'    => '/tmp',
+                'cache_secret' => str_repeat('a', 32),
+            ],
+        ]);
+        $this->assertTrue(true);
+    }
+
+    public function test_ai_spam_extra_blocked_tokens_配列以外で例外() : void {
+        $this->expectException(ConfigException::class);
+        ConfigValidator::validate($this->validBase() + [
+            'ai'      => ['provider' => 'claude_cli'],
+            'ai_spam' => [
+                'enabled'              => true,
+                'extra_blocked_tokens' => 'not-array',
+            ],
+        ]);
+    }
+
     // ---- rate_limit ----
 
     public function test_rate_limit_endpoints_に_不正なキーで例外() : void {

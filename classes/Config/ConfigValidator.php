@@ -86,6 +86,41 @@ class ConfigValidator {
         if ( $provider->requiresApiKey() && empty($config['ai']['api_key']) ) {
             throw new ConfigException("ai.provider='{$provider->value}' は api_key が必要です。");
         }
+
+        // fail_mode の値検証
+        $failMode = $aiSpam['fail_mode'] ?? 'block';
+        if ( ! in_array($failMode, [ 'block', 'allow', 'silent_block' ], true) ) {
+            throw new ConfigException(
+                "ai_spam.fail_mode は 'block' / 'allow' / 'silent_block' のいずれかである必要があります。現在: '{$failMode}'"
+            );
+        }
+
+        // max_input_bytes
+        if ( isset($aiSpam['max_input_bytes']) && ! ( is_int($aiSpam['max_input_bytes']) && $aiSpam['max_input_bytes'] > 0 ) ) {
+            throw new ConfigException("ai_spam.max_input_bytes は正の整数である必要があります。");
+        }
+
+        // cache_secret はキャッシュ有効時に必須（HMAC キャッシュキー用）
+        if ( ! empty($aiSpam['cache']) ) {
+            $secret = (string) ( $aiSpam['cache_secret'] ?? '' );
+            if ( $secret === '' ) {
+                throw new ConfigException(
+                    "ai_spam.cache=true のときは ai_spam.cache_secret が必須です。"
+                    . " env('AI_CACHE_SECRET') 等で gitignore された設定から読み込んでください。"
+                    . " 起動時生成は再起動毎にキャッシュ全滅 → API コスト増を引き起こすため許可していません。"
+                );
+            }
+            if ( strlen($secret) < 16 ) {
+                throw new ConfigException(
+                    "ai_spam.cache_secret は最低 16 バイト必要です。32 バイト以上を推奨します。"
+                );
+            }
+        }
+
+        // extra_blocked_tokens は配列のみ許可
+        if ( isset($aiSpam['extra_blocked_tokens']) && ! is_array($aiSpam['extra_blocked_tokens']) ) {
+            throw new ConfigException("ai_spam.extra_blocked_tokens は配列である必要があります。");
+        }
     }
 
 

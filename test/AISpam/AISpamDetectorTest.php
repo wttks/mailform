@@ -7,6 +7,7 @@ use AIJOH\AI\AIClientException;
 use AIJOH\AI\AIRequest;
 use AIJOH\AI\AIResponse;
 use AIJOH\AISpam\AISpamDetector;
+use AIJOH\SecurityPayloads;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -43,16 +44,24 @@ class AISpamDetectorTest extends TestCase {
         @rmdir($this->cacheDir);
     }
 
-    private function configure( bool $enabled = true, array $fields = ['name'], bool $cache = false, float $threshold = 0.7 ) : void {
+    private function configure(
+        bool $enabled = true,
+        array $fields = ['name'],
+        bool $cache = false,
+        float $threshold = 0.7,
+        string $failMode = 'allow',  // 既存テストとの互換性のため、デフォルトは allow
+    ) : void {
         AISpamDetector::configure(
             ['provider' => 'claude_cli'],
             [
-                'enabled'   => $enabled,
-                'fields'    => $fields,
-                'threshold' => $threshold,
-                'cache'     => $cache,
-                'cache_dir' => $this->cacheDir,
-                'cache_ttl' => 86400,
+                'enabled'      => $enabled,
+                'fields'       => $fields,
+                'threshold'    => $threshold,
+                'cache'        => $cache,
+                'cache_dir'    => $this->cacheDir,
+                'cache_ttl'    => 86400,
+                'cache_secret' => str_repeat('a', 32),  // テスト用 HMAC シード
+                'fail_mode'    => $failMode,
             ]
         );
     }
@@ -185,6 +194,194 @@ class AISpamDetectorTest extends TestCase {
         AISpamDetector::judge(['name' => 'hello']);
         $this->assertTrue($client->lastRequest->jsonMode);
         $this->assertNotEmpty($client->lastRequest->system);
+    }
+
+
+    public function test_リクエストは_user_input_XML_境界で送られる(): void {
+        $this->configure(true);
+        $client = $this->setFakeResponse(['is_spam' => false, 'score' => 0.1, 'reason' => 'x']);
+
+        AISpamDetector::judge(['name' => '田中', 'email' => 'a@b.com']);
+        // user メッセージに <user_input> 境界タグが含まれる
+        $userMessage = $client->lastRequest->messages[0]->content;
+        $this->assertStringContainsString('<user_input>', $userMessage);
+        $this->assertStringContainsString('</user_input>', $userMessage);
+        // CDATA で値を囲んでいる
+        $this->assertStringContainsString('<![CDATA[', $userMessage);
+    }
+
+
+    // ---- プロンプトインジェクション対策 ----
+
+    public function test_入力中の_XML_境界タグは全角化される(): void {
+        $this->configure(true, ['name']);
+        $client = $this->setFakeResponse(['is_spam' => false, 'score' => 0.1, 'reason' => 'x']);
+
+        AISpamDetector::judge(['name' => SecurityPayloads::PROMPT_INJECTION['xml_close']]);
+        $userMessage = $client->lastRequest->messages[0]->content;
+        // 攻撃者が </user_input> を入れても、構造の </user_input> と区別される
+        // mailform 自身が出力する 1 個の </user_input> しか含まれない
+        $this->assertSame(1, substr_count($userMessage, '</user_input>'));
+    }
+
+
+    public function test_入力中の_CDATA_終端はエスケープされる(): void {
+        $this->configure(true, ['name']);
+        $client = $this->setFakeResponse(['is_spam' => false, 'score' => 0.1, 'reason' => 'x']);
+
+        AISpamDetector::judge(['name' => SecurityPayloads::PROMPT_INJECTION['cdata_terminate']]);
+        $userMessage = $client->lastRequest->messages[0]->content;
+        // 入力中の ]]> は ]]&gt; にエスケープされ、構造の終端 ]]> 1 個のみ
+        $this->assertSame(1, substr_count($userMessage, ']]>'));
+    }
+
+
+    public function test_モデル特殊トークンは無害化されてから送られる(): void {
+        $this->configure(true, ['name']);
+        $client = $this->setFakeResponse(['is_spam' => false, 'score' => 0.1, 'reason' => 'x']);
+
+        AISpamDetector::judge(['name' => SecurityPayloads::PROMPT_INJECTION['openai_token']]);
+        $userMessage = $client->lastRequest->messages[0]->content;
+        $this->assertStringNotContainsString('<|im_start|>', $userMessage);
+        $this->assertStringNotContainsString('<|im_end|>', $userMessage);
+    }
+
+
+    // ---- max_input_bytes ----
+
+    public function test_max_input_bytes_を超えた入力は拒否される_block_モード(): void {
+        AISpamDetector::configure(
+            ['provider' => 'claude_cli'],
+            [
+                'enabled'         => true,
+                'fields'          => ['name'],
+                'fail_mode'       => 'block',
+                'max_input_bytes' => 100,
+                'cache_secret'    => str_repeat('a', 32),
+            ]
+        );
+        $client = $this->setFakeResponse(['is_spam' => false, 'score' => 0.0, 'reason' => 'ok']);
+
+        $j = AISpamDetector::judge(['name' => str_repeat('a', 200)]);
+        $this->assertTrue($j->isSpam);  // block モードでスパム判定
+        $this->assertSame(0, $client->sendCount);  // AI 呼ばれない
+    }
+
+
+    public function test_max_input_bytes_を超えた入力_allow_モードは通過(): void {
+        AISpamDetector::configure(
+            ['provider' => 'claude_cli'],
+            [
+                'enabled'         => true,
+                'fields'          => ['name'],
+                'fail_mode'       => 'allow',
+                'max_input_bytes' => 100,
+                'cache_secret'    => str_repeat('a', 32),
+            ]
+        );
+        $client = $this->setFakeResponse(['is_spam' => false, 'score' => 0.0, 'reason' => 'ok']);
+
+        $j = AISpamDetector::judge(['name' => str_repeat('a', 200)]);
+        $this->assertFalse($j->isSpam);  // allow モードで通過
+        $this->assertSame(0, $client->sendCount);  // AI 呼ばれない（早期拒否）
+    }
+
+
+    // ---- fail_mode ----
+
+    public function test_fail_mode_block_は_AI_失敗時にスパム判定(): void {
+        $this->configure(true, ['name'], false, 0.7, 'block');
+        $client = new FakeAIClient();
+        $client->fakeException = new AIClientException('network fail');
+        AISpamDetector::setClientForTest($client);
+
+        $j = AISpamDetector::judge(['name' => 'foo']);
+        $this->assertTrue($j->isSpam);
+        $this->assertSame(1.0, $j->score);
+    }
+
+
+    public function test_fail_mode_silent_block_は_スパム判定するが_reason_を曖昧化(): void {
+        $this->configure(true, ['name'], false, 0.7, 'silent_block');
+        $client = new FakeAIClient();
+        $client->fakeException = new AIClientException('detailed network error');
+        AISpamDetector::setClientForTest($client);
+
+        $j = AISpamDetector::judge(['name' => 'foo']);
+        $this->assertTrue($j->isSpam);
+        $this->assertSame('rejected', $j->reason);  // 曖昧化されている
+        $this->assertStringNotContainsString('detailed', $j->reason);
+    }
+
+
+    public function test_fail_mode_allow_は従来通り_Fail_Open(): void {
+        $this->configure(true, ['name'], false, 0.7, 'allow');
+        $client = new FakeAIClient();
+        $client->fakeException = new AIClientException('network fail');
+        AISpamDetector::setClientForTest($client);
+
+        $j = AISpamDetector::judge(['name' => 'foo']);
+        $this->assertFalse($j->isSpam);
+    }
+
+
+    public function test_jsonData_null_は_block_モードでスパム判定(): void {
+        $this->configure(true, ['name'], false, 0.7, 'block');
+        $client = new FakeAIClient();
+        $client->fakeResponse = new AIResponse('not json', null);
+        AISpamDetector::setClientForTest($client);
+
+        $j = AISpamDetector::judge(['name' => 'foo']);
+        $this->assertTrue($j->isSpam);
+    }
+
+
+    // ---- HMAC キャッシュキー ----
+
+    public function test_異なる_cache_secret_は別キャッシュとして扱われる(): void {
+        // secret A でキャッシュ
+        AISpamDetector::configure(
+            ['provider' => 'claude_cli'],
+            [
+                'enabled'      => true,
+                'fields'       => ['name'],
+                'cache'        => true,
+                'cache_dir'    => $this->cacheDir,
+                'cache_secret' => str_repeat('A', 32),
+                'fail_mode'    => 'allow',
+            ]
+        );
+        $client = $this->setFakeResponse(['is_spam' => false, 'score' => 0.1, 'reason' => 'a']);
+        AISpamDetector::judge(['name' => 'hello']);
+        $this->assertSame(1, $client->sendCount);
+
+        // 同じ入力でも secret を変えれば再 fetch される
+        AISpamDetector::configure(
+            ['provider' => 'claude_cli'],
+            [
+                'enabled'      => true,
+                'fields'       => ['name'],
+                'cache'        => true,
+                'cache_dir'    => $this->cacheDir,
+                'cache_secret' => str_repeat('B', 32),
+                'fail_mode'    => 'allow',
+            ]
+        );
+        $client2 = $this->setFakeResponse(['is_spam' => false, 'score' => 0.1, 'reason' => 'b']);
+        AISpamDetector::judge(['name' => 'hello']);
+        $this->assertSame(1, $client2->sendCount);  // キャッシュヒットせず再 fetch
+    }
+
+
+    // ---- reason の切り詰め ----
+
+    public function test_AI_応答の_reason_は_200_文字に切り詰められる(): void {
+        $this->configure(true, ['name'], false, 0.7, 'allow');
+        $longReason = str_repeat('あ', 500);
+        $this->setFakeResponse(['is_spam' => false, 'score' => 0.1, 'reason' => $longReason]);
+
+        $j = AISpamDetector::judge(['name' => 'foo']);
+        $this->assertSame(200, mb_strlen($j->reason, 'UTF-8'));
     }
 
 }
