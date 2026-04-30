@@ -34,5 +34,8 @@
         <testsuite name="Form">
             <directory>test/Form</directory>
         </testsuite>
+        <testsuite name="Http">
+            <directory>test/Http</directory>
+        </testsuite>
     </testsuites>
 </phpunit>

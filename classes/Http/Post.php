@@ -3,6 +3,7 @@
 namespace AIJOH\Http;
 
 use AIJOH\Util\ArrayUtil;
+use AIJOH\Validation\Exception\ValidationException;
 
 /**
  * POST投稿されたデータを取得するクラス
@@ -16,9 +17,59 @@ class Post {
 
     /**
      * @param array|null $data 指定すると buildPost をスキップしてそのまま使う（テスト用想定）
+     * @throws ValidationException 入力に不正な UTF-8 バイト列が含まれている場合
      */
     public function __construct( ?array $data = null ) {
-        $this->post = $data ?? $this->buildPost();
+        if ( $data !== null ) {
+            // テスト用: 検証スキップしてそのまま使う
+            $this->post = $data;
+            return;
+        }
+        $this->post = $this->buildPost();
+        self::assertValidEncoding($this->post);
+    }
+
+
+    /**
+     * POST データの UTF-8 妥当性を再帰的に検証する。
+     * `_` プレフィックスのキー（`_csrf_token`, `_action` 等）は内部用なのでスキップ。
+     * 不正バイト列を検出したら ValidationException を投げる。
+     *
+     * @throws ValidationException
+     */
+    private static function assertValidEncoding( array $data ) : void {
+        $invalidFields = [];
+        foreach ( $data as $key => $value ) {
+            if ( is_string($key) && str_starts_with($key, '_') ) {
+                continue;
+            }
+            if ( ! self::isValidUtf8Recursive($value) ) {
+                $invalidFields[ (string) $key ] = "入力データに不正な文字コードが含まれています。";
+            }
+        }
+        if ( ! empty($invalidFields) ) {
+            error_log("[Post] invalid UTF-8 detected in fields: " . implode(', ', array_keys($invalidFields)));
+            throw new ValidationException($invalidFields, "入力データに不正な文字コードが含まれています。");
+        }
+    }
+
+
+    /**
+     * 値が文字列なら UTF-8 妥当性を検査、配列なら再帰、それ以外はスキップ。
+     * UploadFile 等のオブジェクトもスキップ。
+     */
+    private static function isValidUtf8Recursive( mixed $value ) : bool {
+        if ( is_string($value) ) {
+            return mb_check_encoding($value, 'UTF-8');
+        }
+        if ( is_array($value) ) {
+            foreach ( $value as $v ) {
+                if ( ! self::isValidUtf8Recursive($v) ) {
+                    return false;
+                }
+            }
+        }
+        return true;
     }
 
     /**

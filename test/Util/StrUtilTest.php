@@ -200,6 +200,33 @@ class StrUtilTest extends TestCase {
         $this->assertSame('foo bar', StrUtil::trim('  foo bar  '));
     }
 
+    // ---- stripFormatChars() ----
+
+    public function test_stripFormatChars_ZWSP_を削除する(): void {
+        $this->assertSame('あい', StrUtil::stripFormatChars("あ\u{200B}\u{200B}\u{200B}い"));
+    }
+
+    public function test_stripFormatChars_BOM_を削除する(): void {
+        $this->assertSame('text', StrUtil::stripFormatChars("\u{FEFF}text"));
+    }
+
+    public function test_stripFormatChars_RTL_Override_を削除する(): void {
+        $this->assertSame('txt.exe', StrUtil::stripFormatChars("\u{202E}txt.exe"));
+    }
+
+    public function test_stripFormatChars_ZWNJ_ZWJ_を削除する(): void {
+        $this->assertSame('あい', StrUtil::stripFormatChars("あ\u{200C}\u{200D}い"));
+    }
+
+    public function test_stripFormatChars_通常の半角全角スペースは残す(): void {
+        $this->assertSame("a b　c", StrUtil::stripFormatChars("a b　c"));
+    }
+
+    public function test_stripFormatChars_配列の各要素に適用する(): void {
+        $result = StrUtil::stripFormatChars(["あ\u{200B}い", "う\u{FEFF}え"]);
+        $this->assertSame(['あい', 'うえ'], $result);
+    }
+
     // ---- toCamelCase() ----
 
     public function test_toCamelCase_スネークケースをキャメルケースに変換する(): void {

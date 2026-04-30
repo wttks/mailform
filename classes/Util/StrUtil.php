@@ -133,6 +133,28 @@ class StrUtil {
         }
         return array_map(fn( $value ) => self::trim($value), $str);
     }
+
+
+    /**
+     * Unicode Format カテゴリ（\p{Cf}）の文字を**全部**削除する。
+     * ZWSP (U+200B) / ZWNJ (U+200C) / ZWJ (U+200D) / RTL Override (U+202E) /
+     * BOM (U+FEFF) などの「見えない / 表示を変える」制御文字が対象。
+     *
+     * 攻撃シナリオ:
+     * - 「あ\u{200B}\u{200B}\u{200B}買って」のように日本語に潜伏
+     * - in_japanese 判定を通過しつつ実際の表示は別文字
+     *
+     * normalize_trim と組み合わせて使うと前後 + 中間の Cf 文字を全削除できる。
+     *
+     * @param string|array $str
+     * @return string|array
+     */
+    public static function stripFormatChars( string|array $str ) : string|array {
+        if ( is_string($str) ) {
+            return preg_replace('/\p{Cf}/u', '', $str);
+        }
+        return array_map(fn( $value ) => self::stripFormatChars($value), $str);
+    }
     
     
     
