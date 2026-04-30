@@ -1,0 +1,11 @@
+# mailform plugin ディレクトリ - Web 経由でアクセスさせない
+# Apache 環境向け。nginx の場合は location ブロックで同等の制御をする。
+<RequireAll>
+    Require all denied
+</RequireAll>
+
+# 後方互換のため <Files> でも denied
+<FilesMatch ".*">
+    Order allow,deny
+    Deny from all
+</FilesMatch>

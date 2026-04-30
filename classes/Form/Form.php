@@ -5,6 +5,8 @@ namespace AIJOH\Form;
 use AIJOH\AISpam\AISpamDetector;
 use AIJOH\AISpam\SpamSession;
 use AIJOH\Form\Draft\DraftManager;
+use AIJOH\Hook\HookRegistry;
+use AIJOH\Hook\PluginLoader;
 use AIJOH\Http\Request;
 use AIJOH\Lang\Translator;
 use AIJOH\Http\Response;
@@ -48,6 +50,9 @@ class Form implements FormBase {
     /** @var DraftManager|null draft 機能（'draft' 設定がある場合のみ初期化） */
     private ?DraftManager $draftManager = null;
 
+    /** @var HookRegistry Hook の集約レジストリ（config / plugins / on() の 3 経路をまとめる）*/
+    private HookRegistry $hooks;
+
 
     public function __construct( array $config ) {
         if ( isset($config['lang']) && is_string($config['lang']) && $config['lang'] !== '' ) {
@@ -66,6 +71,60 @@ class Form implements FormBase {
         if ( isset($config['draft']) && is_array($config['draft']) ) {
             $this->draftManager = new DraftManager($config['draft']);
         }
+
+        // Hook 機構: 3 経路（config / plugins / on()）を 1 つの HookRegistry に集約
+        $this->hooks = new HookRegistry();
+        $this->registerConfigHooks($config['hooks'] ?? []);
+        PluginLoader::loadInto($this->hooks, $config['plugin_dirs'] ?? []);
+    }
+
+
+    /**
+     * config の 'hooks' セクションを HookRegistry に登録する。
+     *
+     * 形式:
+     *   'hooks' => [
+     *       'after_send' => callable,                // 単一登録
+     *       'before_validate' => [callable, ...],    // 複数登録
+     *   ]
+     */
+    private function registerConfigHooks( array $hooks ) : void {
+        foreach ( $hooks as $event => $listeners ) {
+            if ( ! is_string($event) || $event === '' ) {
+                continue;
+            }
+            // 単一 callable も配列形式に正規化
+            $list = is_callable($listeners) ? [ $listeners ] : (array) $listeners;
+            foreach ( $list as $listener ) {
+                if ( is_callable($listener) ) {
+                    $this->hooks->on($event, $listener);
+                }
+            }
+        }
+    }
+
+
+    /**
+     * Hook リスナーを動的に登録する（receive() より前の任意のタイミングで使える）。
+     * config / plugins と同じ HookRegistry に集約される。
+     *
+     * 利用例: テスト時の Hook 差し込み、ドライラン用 hook、特定の条件下のみ登録 など。
+     *
+     * @param string $event Hook 名（'after_send' など。一覧は HOOKS.md 参照）
+     * @param callable $listener
+     * @return self
+     */
+    public function on( string $event, callable $listener ) : self {
+        $this->hooks->on($event, $listener);
+        return $this;
+    }
+
+
+    /**
+     * 内部 HookRegistry を取得（テスト・デバッグ用）。
+     */
+    public function getHookRegistry() : HookRegistry {
+        return $this->hooks;
     }
 
 
@@ -144,12 +203,36 @@ class Form implements FormBase {
     /**
      * AI スパム判定を実行し、スパムなら拒否レスポンスで終了する。
      */
-    private function checkSpamOrAbort( array $data ) : void {
+    private function checkSpamOrAbort( $formData ) : void {
+        $data = is_array($formData) ? $formData : $formData->getData();
         $judgement = AISpamDetector::judge($data);
         if ( $judgement->isSpam ) {
+            // スパム判定 hook（block 前に通知）
+            if ( ! is_array($formData) ) {
+                $this->hooks->dispatch('spam_detected', $formData, $judgement);
+            }
             SpamSession::block($judgement->reason);
             Response::jsonResults(false, $this->spamBlockMessage);
         }
+        if ( ! is_array($formData) ) {
+            $this->hooks->dispatch('after_spam_check', $formData, $judgement);
+        }
+    }
+
+
+    /**
+     * 既存の beforeFormat と before_validate hook を組み合わせた callback を返す。
+     * 順序: beforeFormat（既存）→ before_validate filter（新規 hook）。
+     */
+    private function combinedBeforeFormat() : callable {
+        $existing = $this->beforeFormat;
+        $hooks = $this->hooks;
+        return function ( array $data ) use ( $existing, $hooks ) {
+            if ( is_callable($existing) ) {
+                $data = $existing($data);
+            }
+            return $hooks->filter('before_validate', $data);
+        };
     }
 
 
@@ -157,19 +240,27 @@ class Form implements FormBase {
      * 直接送信フロー: バリデーション → メール送信 → 完了
      */
     private function receiveDirectFlow( Request $request ) : void {
+        $rawData = $request->post()->getAll();
         try {
-            $formData = $request->validateForm($this->validationConfig, $this->beforeFormat);
-            // バリデーション後・送信前に AI スパム判定（スパム判定なら exit）
-            $this->checkSpamOrAbort($formData->getData());
+            $formData = $request->validateForm($this->validationConfig, $this->combinedBeforeFormat());
+            $this->hooks->dispatch('after_validate', $formData);
+            // バリデーション後・送信前に AI スパム判定（hook 発火含む）
+            $this->checkSpamOrAbort($formData);
             $formatter  = new Formatter($formData);
             $sendConfig = $formatter->formatAll($this->sendConfig);
+            // before_send filter: 送信 config を加工可能（条件付き宛先削除等）
+            $sendConfig = $this->hooks->filter('before_send', $sendConfig, $formData);
             $sender     = new Sender($sendConfig);
+            $sender->setHookRegistry($this->hooks);
             $sender->sendAll($formatter);
             $this->draftManager?->clear();
+            $this->hooks->dispatch('after_send', $formData);
             Response::jsonResults(true, '送信が完了しました。', null, $this->completeUrl);
         } catch ( SendException $se ) {
+            $this->hooks->dispatch('send_failed', $formData ?? null, $se);
             Response::jsonResults(false, $se->getMessage());
         } catch ( ValidationException $e ) {
+            $this->hooks->dispatch('validation_failed', $e->getErrors(), $rawData);
             Response::jsonResults(false, 'フォームのチェックに失敗しました。', $e->getErrors());
         }
     }
@@ -196,13 +287,16 @@ class Form implements FormBase {
      * 入力ステップ: バリデーションしてセッションに保存する。
      */
     private function receiveInputStep( Request $request ) : void {
+        $rawData = $request->post()->getAll();
         try {
-            $formData = $request->validateForm($this->validationConfig, $this->beforeFormat);
-            // 確認画面表示前にも AI スパム判定（早期に弾く）
-            $this->checkSpamOrAbort($formData->getData());
+            $formData = $request->validateForm($this->validationConfig, $this->combinedBeforeFormat());
+            $this->hooks->dispatch('after_validate', $formData);
+            // 確認画面表示前にも AI スパム判定（早期に弾く、hook 発火含む）
+            $this->checkSpamOrAbort($formData);
             $this->formSession->save($formData);
             Response::jsonResults(true, 'バリデーションが完了しました。', null, $this->confirmUrl);
         } catch ( ValidationException $e ) {
+            $this->hooks->dispatch('validation_failed', $e->getErrors(), $rawData);
             Response::jsonResults(false, 'フォームのチェックに失敗しました。', $e->getErrors());
         }
     }
@@ -227,17 +321,21 @@ class Form implements FormBase {
         }
 
         // 念のため確認 → 送信ステップでも判定する（キャッシュにヒットするので追加コストは無い）
-        $this->checkSpamOrAbort($formData->getData());
+        $this->checkSpamOrAbort($formData);
 
         try {
             $formatter  = new Formatter($formData);
             $sendConfig = $formatter->formatAll($this->sendConfig);
+            $sendConfig = $this->hooks->filter('before_send', $sendConfig, $formData);
             $sender     = new Sender($sendConfig);
+            $sender->setHookRegistry($this->hooks);
             $sender->sendAll($formatter);
             $this->formSession->clear();
             $this->draftManager?->clear();
+            $this->hooks->dispatch('after_send', $formData);
             Response::jsonResults(true, '送信が完了しました。', null, $this->completeUrl);
         } catch ( SendException $se ) {
+            $this->hooks->dispatch('send_failed', $formData, $se);
             Response::jsonResults(false, $se->getMessage());
         }
     }
@@ -341,6 +439,7 @@ class Form implements FormBase {
             fn( $k ) => ! str_starts_with((string) $k, '_'),
             ARRAY_FILTER_USE_KEY,
         );
+        $this->hooks->dispatch('before_draft_save', $filtered);
         $this->draftManager->save($filtered);
         Response::jsonResults(true);
     }
@@ -361,6 +460,7 @@ class Form implements FormBase {
             exit;
         }
         $values = $this->draftManager->restore();
+        $this->hooks->dispatch('after_draft_restore', $values);
         Response::json([ 'status' => true, 'values' => $values ?: new \stdClass() ]);
         exit;
     }

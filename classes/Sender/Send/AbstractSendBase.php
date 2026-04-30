@@ -2,6 +2,7 @@
 
 namespace AIJOH\Sender\Send;
 
+use AIJOH\Hook\HookRegistry;
 use AIJOH\Results\Formatter\FormatBase;
 use AIJOH\Results\Formatter\Formatter;
 use AIJOH\Results\FormData;
@@ -10,13 +11,24 @@ use AIJOH\Results\FormData;
  * フォームのデータを送信するクラスの基底クラス
  */
 abstract class AbstractSendBase implements Send {
-    
+
     protected ?array $config = null;
-    
+
     protected ?FormatBase $format = null;
-    
-    
+
+    /** @var HookRegistry|null Hook 発火用（Sender 経由で注入される） */
+    protected ?HookRegistry $hooks = null;
+
+
     public function __construct() {
+    }
+
+
+    /**
+     * Hook レジストリを設定する（Sender::setHookRegistry から呼ばれる）。
+     */
+    public function setHookRegistry( HookRegistry $hooks ) : void {
+        $this->hooks = $hooks;
     }
     
     

@@ -161,6 +161,9 @@ class SendMailAdmin extends AbstractSendBase {
         // 設置者が config 'attachments' で指定した固定ファイルも追加
         $this->addStaticAttachmentsTo($mailer);
 
+        // before_admin_send hook: 設置者が独自ヘッダ追加 / 添付差し替え等を行える
+        $this->hooks?->dispatch('before_admin_send', $mailer, $this->format->getFormData());
+
         return $mailer->send();
     }
 }

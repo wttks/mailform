@@ -115,6 +115,9 @@ class SendMailUser extends AbstractSendBase {
         // 設置者が config 'attachments' で指定した固定ファイル（ホワイトペーパー等）を添付する。
         $this->addStaticAttachmentsTo($mailer);
 
+        // before_user_send hook: 設置者が独自ヘッダ追加 / 添付差し替え等を行える
+        $this->hooks?->dispatch('before_user_send', $mailer, $this->format->getFormData());
+
         return $mailer->send();
     }
 }

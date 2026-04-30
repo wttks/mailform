@@ -2,6 +2,7 @@
 
 namespace AIJOH\Sender;
 
+use AIJOH\Hook\HookRegistry;
 use AIJOH\Output\Mailer\MailAddressParser;
 use AIJOH\Output\Mailer\SendMailException;
 use AIJOH\Results\Formatter\FormatBase;
@@ -27,6 +28,9 @@ class Sender {
      * Email Pumping 対策: 攻撃者が動的宛先で大量送信を試みるのを物理的に阻止する。
      */
     private int $maxRecipientsPerRequest;
+
+    /** @var HookRegistry|null 各 SendMail に伝播する Hook レジストリ */
+    private ?HookRegistry $hooks = null;
 
 
     /**
@@ -118,6 +122,21 @@ class Sender {
                 "送信先が上限を超えています。フォーム設定を確認してください。"
             );
         }
+    }
+
+
+    /**
+     * Hook レジストリを設定する。各 SendMail に伝播し、before_admin_send /
+     * before_user_send 等の hook を発火可能にする。
+     */
+    public function setHookRegistry( HookRegistry $hooks ) : self {
+        $this->hooks = $hooks;
+        foreach ( $this->sendList as $send ) {
+            if ( method_exists($send, 'setHookRegistry') ) {
+                $send->setHookRegistry($hooks);
+            }
+        }
+        return $this;
     }
 
 
