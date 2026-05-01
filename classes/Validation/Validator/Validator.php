@@ -3,6 +3,7 @@
 namespace AIJOH\Validation\Validator;
 
 
+use AIJOH\Hook\HookRegistry;
 use AIJOH\Util\ArrayUtil;
 use AIJOH\Validation\Parser\TitleManager;
 use AIJOH\Validation\Validator\ValidationOne;
@@ -100,31 +101,55 @@ class Validator {
     
     /**
      * データのバリデーションを行う。
+     *
+     * $hooks が渡された場合、追加で 2 種類のフィルタを発火する:
+     *   - validate.{field} : per-field の追加チェック（既存ルールの直後）
+     *     fn(?string $error, mixed $value, array $data): ?string
+     *     null を返せば成功扱い、文字列を返せばエラーとして登録される。
+     *   - validate           : 全エラーを総合的に加工
+     *     fn(array $errors, array $data): array
+     *     返した配列で errors をまるごと置き換える（空にすれば成功）。
+     *
      * @param array $data
+     * @param HookRegistry|null $hooks 動的バリデーション用の hook
      * @return array
      * @throws \AIJOH\Validation\Exception\ValidationException バリデーション失敗時の例外
      */
-    public function validate( array $data ) : array {
+    public function validate( array $data, ?HookRegistry $hooks = null ) : array {
         $results = [];
         $errors = new ValidationErrors($this->titleManager);
-        
-        
+
+
         foreach ( $this->validators as $key => $validator ) {
             $keyValues = ArrayUtil::getKeyValueList($data, $key);
             if( empty($keyValues) ){
                 $keyValues = [ $key => null ];
             }
-            
+
             foreach ( $keyValues as $itemKey => $itemValue ) {
                 [ $validated, $message ] = $validator->validate($itemValue, $itemKey, $data, $this);
-                if ( $validated ) {
+                $error = $validated ? null : $message;
+
+                // C: validate.{field} — フィールド単位の追加チェック
+                //   null を返したら「エラーなし（成功化）」を表したいので fold を使う
+                //   （filter は null=据え置きで成功化を表現できない）
+                if ( $hooks !== null ) {
+                    $error = $hooks->fold("validate.{$itemKey}", $error, $itemValue, $data);
+                }
+
+                if ( $error === null ) {
                     ArrayUtil::set($results, $itemKey, $itemValue);
                 } else {
-                    $errors->add($itemKey, $message);
+                    $errors->add($itemKey, $error);
                 }
             }
         }
-        
+
+        // A: validate filter — 全 errors 配列を加工（空配列にすれば成功化、追加もできる）
+        if ( $hooks !== null ) {
+            $errors->replace($hooks->filter('validate', $errors->toArray(), $data));
+        }
+
         $errors->exception();
         return $results;
     }

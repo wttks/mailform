@@ -80,6 +80,43 @@ class HookRegistryTest extends TestCase {
     }
 
 
+    public function test_fold_未登録は値をそのまま返す() : void {
+        $registry = new HookRegistry();
+        $this->assertSame('init', $registry->fold('test', 'init'));
+    }
+
+
+    public function test_fold_は_null_も値として採用する() : void {
+        $registry = new HookRegistry();
+        $registry->on('test', fn( $v ) => null);    // null を採用
+        $registry->on('test', fn( $v ) => $v ?? 'fallback');
+
+        $this->assertSame('fallback', $registry->fold('test', 'init'));
+    }
+
+
+    public function test_fold_戻り値で順次変換される() : void {
+        $registry = new HookRegistry();
+        $registry->on('test', fn( $v ) => $v + 1);
+        $registry->on('test', fn( $v ) => $v * 2);
+
+        $this->assertSame(22, $registry->fold('test', 10));
+    }
+
+
+    public function test_fold_追加引数も渡される() : void {
+        $registry = new HookRegistry();
+        $captured = [];
+        $registry->on('test', function( $value, $extra ) use ( &$captured ) {
+            $captured[] = [ $value, $extra ];
+            return $value;
+        });
+
+        $registry->fold('test', 'foo', 'context');
+        $this->assertSame([[ 'foo', 'context' ]], $captured);
+    }
+
+
     public function test_filter_追加引数も渡される() : void {
         $registry = new HookRegistry();
         $captured = [];

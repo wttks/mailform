@@ -18,6 +18,17 @@ namespace AIJOH\Hook;
  *
  * 中止が必要な hook 内では例外を throw すれば呼び出し元へ伝播する
  * （ValidationException / SendException / Form::abortWithErrors() など既存パターン）。
+ *
+ * 主な hook 一覧（概略）:
+ *   - before_validate     filter: format 後・validate 前のデータを加工
+ *   - validate_rules      filter: validation ルール定義を $data に応じて動的に変える
+ *   - validate.{field}    filter: 1 フィールドの追加チェック（既存ルール直後）
+ *   - validate            filter: 全エラー配列を総合加工（空にすれば成功化）
+ *   - after_validate      dispatch: validate 成功後に通知
+ *   - validation_failed   dispatch: validate 失敗後に通知
+ *   - spam_detected / after_spam_check : AI スパム判定関連
+ *   - before_send         filter: 送信 config を加工
+ *   - after_send / send_failed : 送信完了/失敗の通知
  */
 class HookRegistry {
 
@@ -69,6 +80,25 @@ class HookRegistry {
             if ( $result !== null ) {
                 $value = $result;
             }
+        }
+        return $value;
+    }
+
+
+    /**
+     * filter と同じく fold チェインだが、null も値として採用する強制上書き版。
+     *
+     * filter() の「null = 据え置き」という挙動が邪魔になるケース用。
+     * 例: validate.{field} hook で null を返して「エラーを消す（成功化）」を表現したいとき。
+     *
+     * @param string $event Hook 名
+     * @param mixed $value 初期値
+     * @param mixed ...$args 追加の引数
+     * @return mixed fold 後の値（null になる可能性あり）
+     */
+    public function fold( string $event, mixed $value, mixed ...$args ) : mixed {
+        foreach ( $this->listeners[ $event ] ?? [] as $listener ) {
+            $value = $listener($value, ...$args);
         }
         return $value;
     }

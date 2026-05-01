@@ -2,6 +2,7 @@
 
 namespace AIJOH\Validation;
 
+use AIJOH\Hook\HookRegistry;
 use AIJOH\Results\FormData;
 use AIJOH\Validation\Compose\ComposeFactory;
 use AIJOH\Validation\Exception\ValidationException;
@@ -121,39 +122,55 @@ class Validation {
     /**
      * データのバリデーションを行う。
      * @param array $data
+     * @param HookRegistry|null $hooks 動的バリデーション用の hook（validate.{field} / validate）
      * @return array
      * @throws ValidationException
      */
-    public function dataValidate( array $data ) : array {
-        return $this->validator->validate($data);
+    public function dataValidate( array $data, ?HookRegistry $hooks = null ) : array {
+        return $this->validator->validate($data, $hooks);
     }
-    
-    
+
+
     /**
      * バリデーションした後のデータを配列で返す。
+     *
+     * $hooks が渡されている場合、format/beforeValidate 完了後・実バリデーション直前に
+     * 'validate_rules' filter を発火し、ルール定義を動的に書き換えた上で検証する。
+     *
      * @param array $data
+     * @param HookRegistry|null $hooks 動的バリデーション用の hook
      * @return array
      * @throws ValidationException バリデーション例外
      */
-    public function validated( array $data ) : array {
+    public function validated( array $data, ?HookRegistry $hooks = null ) : array {
         $data = $this->beforeFormat($data);
         $data = $this->applyCompose($data);
         $data = $this->format($data);
         $data = $this->beforeValidate($data);
 
-        return $this->dataValidate($data);
+        // B: validate_rules filter — ルール定義を $data に応じて動的に変える
+        if ( $hooks !== null ) {
+            $newConfig = $hooks->filter('validate_rules', $this->config, $data);
+            if ( $newConfig !== $this->config ) {
+                $this->config = $newConfig;
+                $this->validator = new Validator($newConfig);
+            }
+        }
+
+        return $this->dataValidate($data, $hooks);
     }
-    
-    
+
+
     /**
      * データのバリデーションを行う。
      * @param array $data 入力データ
+     * @param HookRegistry|null $hooks 動的バリデーション用の hook
      * @return FormData バリデーション後のデータ
      * @throws ValidationException バリデーション例外
      * @throws ValidationRuleException バリデーションの設定が不正な場合の例外
      */
-    public function validateFormData( array $data ) : FormData {
-        $data = $this->validated($data);
+    public function validateFormData( array $data, ?HookRegistry $hooks = null ) : FormData {
+        $data = $this->validated($data, $hooks);
         $formData = $this->createFormData();
         $formData->setData($data);
         return $formData;

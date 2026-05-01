@@ -2,6 +2,7 @@
 
 namespace AIJOH\Http;
 
+use AIJOH\Hook\HookRegistry;
 use AIJOH\Results\FormData;
 use AIJOH\Validation\Exception\ValidationException;
 use AIJOH\Validation\Exception\ValidationRuleException;
@@ -82,17 +83,19 @@ class Request {
      * @param array $config バリデーションの設定情報
      * @param callable|null $beforeFormat バリデーション前にデータをフォーマットする関数
      * @param string|null $formClass 出力するフォームデータクラス
+     * @param HookRegistry|null $hooks 動的バリデーション用の hook
+     *        （validate_rules / validate.{field} / validate を発火させたい場合に渡す）
      * @return FormData
      * @throws ValidationException バリデーション例外
      * @throws ValidationRuleException バリデーションの設定が不正な場合の例外
      */
-    public function validateForm( array $config,$beforeFormat = null, ?string $formClass = null ) : FormData {
+    public function validateForm( array $config,$beforeFormat = null, ?string $formClass = null, ?HookRegistry $hooks = null ) : FormData {
         $data = $this->getPostData($beforeFormat);
         $validation = new Validation($config);
         if ( $formClass !== null ) {
             $validation->setFormDataClass($formClass);
         }
-        return $validation->validateFormData($data);
+        return $validation->validateFormData($data, $hooks);
     }
     
     

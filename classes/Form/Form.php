@@ -192,7 +192,7 @@ class Form implements FormBase {
      */
     private function receiveValidateOnly( Request $request ) : void {
         try {
-            $request->validateForm($this->validationConfig, $this->beforeFormat);
+            $request->validateForm($this->validationConfig, $this->beforeFormat, null, $this->hooks);
             Response::jsonResults(true);
         } catch ( ValidationException $e ) {
             Response::jsonResults(false, null, $e->getErrors());
@@ -242,7 +242,7 @@ class Form implements FormBase {
     private function receiveDirectFlow( Request $request ) : void {
         $rawData = $request->post()->getAll();
         try {
-            $formData = $request->validateForm($this->validationConfig, $this->combinedBeforeFormat());
+            $formData = $request->validateForm($this->validationConfig, $this->combinedBeforeFormat(), null, $this->hooks);
             $this->hooks->dispatch('after_validate', $formData);
             // バリデーション後・送信前に AI スパム判定（hook 発火含む）
             $this->checkSpamOrAbort($formData);
@@ -289,7 +289,7 @@ class Form implements FormBase {
     private function receiveInputStep( Request $request ) : void {
         $rawData = $request->post()->getAll();
         try {
-            $formData = $request->validateForm($this->validationConfig, $this->combinedBeforeFormat());
+            $formData = $request->validateForm($this->validationConfig, $this->combinedBeforeFormat(), null, $this->hooks);
             $this->hooks->dispatch('after_validate', $formData);
             // 確認画面表示前にも AI スパム判定（早期に弾く、hook 発火含む）
             $this->checkSpamOrAbort($formData);
