@@ -19,7 +19,7 @@ class PHPMailSender extends MailSendBase {
         $mailer = new PHPMailer(true);
         $mailer->CharSet = $this->charset;
         $mailer->Encoding = "base64";
-        $mailer->setLanguage('jp');
+        $mailer->setLanguage('ja');
         
         if( $this->from === null ) {
             throw new SendMailException("送信元が指定されていません。");
