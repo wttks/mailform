@@ -20,7 +20,7 @@ class ValidateRequiredIf extends ValidateBase {
     }
 
     public function getErrorMessage() : string {
-        return ':fieldを設定している場合:titleは必須です。';
+        return ':fieldに:valueを選択している場合:titleは必須です。';
     }
     
     /**

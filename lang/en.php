@@ -8,7 +8,7 @@
 return [
     // 必須・基本型
     ':titleは必須項目です。'                                       => ':title is required.',
-    ':fieldを設定している場合:titleは必須です。'                   => ':title is required when :field is set.',
+    ':fieldに:valueを選択している場合:titleは必須です。'           => ':title is required when :field is set to :value.',
     ':titleは文字列を指定してください。'                           => ':title must be a string.',
     ':titleは整数で入力してください。'                             => ':title must be an integer.',
     ':titleは配列で指定してください。'                             => ':title must be an array.',

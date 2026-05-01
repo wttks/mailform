@@ -112,6 +112,7 @@ class ValidateRequiredIfTest extends TestCase {
     public function test_エラーメッセージが正しい形式である(): void {
         $msg = $this->rule->getErrorMessage();
         $this->assertStringContainsString(':field', $msg);
+        $this->assertStringContainsString(':value', $msg);
         $this->assertStringContainsString(':title', $msg);
     }
 
