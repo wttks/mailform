@@ -29,11 +29,11 @@
     "ext-curl": "*",
     "ext-sodium": "*",
     "ext-zlib": "*",
-    "phpmailer/phpmailer": "^6.9",
+    "phpmailer/phpmailer": "^7.0",
     "curl/curl": "^2.5"
   },
   "require-dev": {
-    "phpunit/phpunit": "^11.0"
+    "phpunit/phpunit": "^13.0"
   },
   "config": {
     "sort-packages": true
