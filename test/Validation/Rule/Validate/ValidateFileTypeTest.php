@@ -20,7 +20,7 @@ class ValidateFileTypeTest extends TestCase {
      * exists() は true を返すようにしてバリデーションがスキップされないようにする。
      */
     private function makeFile( string $mimeType, string $extension ) : UploadFile {
-        $mock = $this->createMock(UploadFile::class);
+        $mock = $this->createStub(UploadFile::class);
         $mock->method('exists')->willReturn(true);
         $mock->method('getMimeType')->willReturn($mimeType);
         $mock->method('getExtension')->willReturn($extension);

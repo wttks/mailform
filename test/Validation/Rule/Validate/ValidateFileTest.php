@@ -20,7 +20,7 @@ class ValidateFileTest extends TestCase {
     }
 
     private function createUploadFileMock(bool $exists, int $size = 1000): UploadFile {
-        $mock = $this->createMock(UploadFile::class);
+        $mock = $this->createStub(UploadFile::class);
         $mock->method('exists')->willReturn($exists);
         $mock->method('getSize')->willReturn($exists ? $size : 0);
         return $mock;

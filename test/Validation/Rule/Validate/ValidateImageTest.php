@@ -20,7 +20,7 @@ class ValidateImageTest extends TestCase {
     }
 
     private function createUploadFileMock(string $mimeType, int $size = 1000): UploadFile {
-        $mock = $this->createMock(UploadFile::class);
+        $mock = $this->createStub(UploadFile::class);
         $mock->method('getMimeType')->willReturn($mimeType);
         $mock->method('getSize')->willReturn($size);
         $mock->method('exists')->willReturn($size > 0);
