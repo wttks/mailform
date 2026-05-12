@@ -31,7 +31,7 @@ namespace AIJOH\Config;
 class ConfigLoader {
 
     /** common ディレクトリで読み込む共通セクション */
-    private const COMMON_SECTIONS = ['verify', 'rate_limit', 'ai', 'ai_spam'];
+    private const COMMON_SECTIONS = ['verify', 'rate_limit', 'ai', 'ai_spam', 'dev_bypass'];
 
     /** form ディレクトリで読み込むフォーム個別セクション */
     private const FORM_SECTIONS = ['validation', 'sender'];
