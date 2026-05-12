@@ -52,17 +52,17 @@ class ConfigLoaderTest extends TestCase {
     }
 
     public function test_overrides_引数で_form_個別に_共通設定を上書き(): void {
-        $this->writeReturn($this->commonDir . '/rate_limit.php', "['enabled' => true, 'whitelist_ips' => ['127.0.0.1']]");
+        $this->writeReturn($this->commonDir . '/rate_limit.php', "['enabled' => true, 'storage_dir' => '/tmp/default']");
         $this->writeReturn($this->formDir . '/validation.php', "[]");
 
         $config = ConfigLoader::buildFormConfig(
             $this->formDir,
             $this->commonDir,
-            ['rate_limit' => ['whitelist_ips' => []]],   // フォーム個別で whitelist 空に
+            ['rate_limit' => ['storage_dir' => '/var/run/custom']],   // フォーム個別で上書き
         );
 
         $this->assertTrue($config['rate_limit']['enabled']);
-        $this->assertSame([], $config['rate_limit']['whitelist_ips']);
+        $this->assertSame('/var/run/custom', $config['rate_limit']['storage_dir']);
     }
 
     public function test_common_local_php_は_最後にマージされる_本番上書き(): void {

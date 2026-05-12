@@ -47,10 +47,10 @@ class ConfigMergerTest extends TestCase {
 
     public function test_リスト_数値キー_は完全置換(): void {
         $r = ConfigMerger::merge(
-            ['whitelist_ips' => ['127.0.0.1', '::1', '172.20.0.0/16']],
-            ['whitelist_ips' => []],
+            ['fields' => ['name', 'email', 'message']],
+            ['fields' => ['message']],
         );
-        $this->assertSame(['whitelist_ips' => []], $r);
+        $this->assertSame(['fields' => ['message']], $r);
     }
 
     public function test_リスト_の置換は空でなくても(): void {
@@ -93,24 +93,25 @@ class ConfigMergerTest extends TestCase {
         $base = [
             'rate_limit' => [
                 'enabled' => true,
-                'whitelist_ips' => ['127.0.0.1', '::1', '172.20.0.0/16'],
+                'storage_dir' => '/tmp/dev',
                 'endpoints' => [
                     'submit' => [['key' => 'ip', 'limit' => 5, 'window' => 60]],
                 ],
             ],
-            'ai_spam' => ['enabled' => false],
+            'ai_spam' => ['enabled' => false, 'fields' => ['name']],
             'ai'      => ['provider' => 'claude_cli'],
         ];
         $local = [
-            'rate_limit' => ['whitelist_ips' => []],
+            'rate_limit' => ['storage_dir' => '/var/run/ratelimit'],
             'ai_spam'    => ['enabled' => true],
             'ai'         => ['provider' => 'claude_api', 'api_key' => 'sk-prod'],
         ];
         $r = ConfigMerger::merge($base, $local);
-        $this->assertSame([], $r['rate_limit']['whitelist_ips']);
+        $this->assertSame('/var/run/ratelimit', $r['rate_limit']['storage_dir']);
         $this->assertTrue($r['rate_limit']['enabled']);  // 元が残る
         $this->assertCount(1, $r['rate_limit']['endpoints']['submit']);  // 元が残る
         $this->assertTrue($r['ai_spam']['enabled']);
+        $this->assertSame(['name'], $r['ai_spam']['fields']);  // 元が残る
         $this->assertSame('claude_api', $r['ai']['provider']);
         $this->assertSame('sk-prod', $r['ai']['api_key']);
     }

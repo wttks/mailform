@@ -9,10 +9,10 @@ namespace AIJOH\Config;
  * 連想配列（map）は再帰的にマージする。これは設定マージとして自然な挙動:
  *
  *   merge(
- *       ['rate_limit' => ['enabled' => true,  'whitelist_ips' => ['127.0.0.1']]],
- *       ['rate_limit' => ['whitelist_ips' => []]],   // ホワイトリストを空で上書き
+ *       ['ai_spam' => ['enabled' => false, 'fields' => ['name']]],
+ *       ['ai_spam' => ['enabled' => true]],   // enabled だけ上書き
  *   )
- *   => ['rate_limit' => ['enabled' => true,  'whitelist_ips' => []]]
+ *   => ['ai_spam' => ['enabled' => true,  'fields' => ['name']]]
  *
  * 連想配列の判定は ArrayUtil::isHash() と同じ「全キーが連続する数値か」を見る。
  */
