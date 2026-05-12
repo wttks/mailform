@@ -7,6 +7,7 @@ use AIJOH\AI\AIClientException;
 use AIJOH\AI\AIRequest;
 use AIJOH\AI\AIResponse;
 use AIJOH\AISpam\AISpamDetector;
+use AIJOH\Http\DevBypass;
 use AIJOH\SecurityPayloads;
 use PHPUnit\Framework\TestCase;
 
@@ -34,11 +35,13 @@ class AISpamDetectorTest extends TestCase {
 
     protected function setUp() : void {
         AISpamDetector::reset();
+        DevBypass::reset();
         $this->cacheDir = sys_get_temp_dir() . '/mailform_aispam_test_' . uniqid();
     }
 
     protected function tearDown() : void {
         AISpamDetector::reset();
+        DevBypass::reset();
         $files = glob($this->cacheDir . '/*') ?: [];
         foreach ( $files as $f ) @unlink($f);
         @rmdir($this->cacheDir);
@@ -382,6 +385,41 @@ class AISpamDetectorTest extends TestCase {
 
         $j = AISpamDetector::judge(['name' => 'foo']);
         $this->assertSame(200, mb_strlen($j->reason, 'UTF-8'));
+    }
+
+
+    // ---- dev_bypass ----
+
+    public function test_dev_bypass_一致なら_AI判定をスキップ_cleanを返す(): void {
+        $this->configure(true, ['message'], false, 0.7, 'block');
+        $client = $this->setFakeResponse(['is_spam' => true, 'score' => 0.95, 'reason' => 'spam']);
+        DevBypass::configure([
+            'enabled' => true,
+            'bypass'  => ['ai_spam'],
+            'match'   => ['email' => ['qa@example.com']],
+            'expires_at' => '2099-12-31',
+        ]);
+
+        $j = AISpamDetector::judge(['message' => 'スパム的内容', 'email' => 'qa@example.com']);
+
+        $this->assertFalse($j->isSpam);
+        $this->assertSame('dev_bypass', $j->reason);
+        $this->assertSame(0, $client->sendCount);  // AI に問い合わせていない
+    }
+
+    public function test_dev_bypass_不一致なら通常通り_AI判定が走る(): void {
+        $this->configure(true, ['message'], false, 0.7, 'block');
+        $client = $this->setFakeResponse(['is_spam' => false, 'score' => 0.1, 'reason' => 'ok']);
+        DevBypass::configure([
+            'enabled' => true,
+            'bypass'  => ['ai_spam'],
+            'match'   => ['email' => ['qa@example.com']],
+            'expires_at' => '2099-12-31',
+        ]);
+
+        AISpamDetector::judge(['message' => '通常のお問い合わせ', 'email' => 'random@example.com']);
+
+        $this->assertSame(1, $client->sendCount);  // AI に問い合わせている
     }
 
 }

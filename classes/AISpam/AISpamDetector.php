@@ -8,6 +8,7 @@ use AIJOH\AI\AIClientFactory;
 use AIJOH\AI\AIMessage;
 use AIJOH\AI\AIRequest;
 use AIJOH\AI\AIResponse;
+use AIJOH\Http\DevBypass;
 
 /**
  * AI を使ってフォーム送信内容のスパム判定を行う。
@@ -71,6 +72,11 @@ class AISpamDetector {
     public static function judge( array $data ) : SpamJudgement {
         if ( self::$disabled || empty(self::$spamConfig['enabled']) ) {
             return SpamJudgement::clean('disabled');
+        }
+
+        // dev_bypass: 特定の入力値が一致したら判定をスキップ（IP ホワイトリスト代替）
+        if ( DevBypass::shouldBypass('ai_spam', $data) ) {
+            return SpamJudgement::clean('dev_bypass');
         }
 
         $text = self::extractFields($data);
