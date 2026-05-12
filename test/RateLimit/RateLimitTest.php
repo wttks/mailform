@@ -2,6 +2,7 @@
 
 namespace AIJOH\Test\RateLimit;
 
+use AIJOH\Http\DevBypass;
 use AIJOH\RateLimit\RateLimit;
 use AIJOH\RateLimit\RateLimitStore;
 use PHPUnit\Framework\TestCase;
@@ -33,21 +34,24 @@ class RateLimitTest extends TestCase {
 
     protected function setUp(): void {
         RateLimit::reset();
+        DevBypass::reset();
         $this->store = new MemoryStore();
         $_SERVER['REMOTE_ADDR'] = '203.0.113.1';
         unset($_SERVER['HTTP_X_FORWARDED_FOR']);
+        $_POST = [];
     }
 
     protected function tearDown(): void {
         RateLimit::reset();
+        DevBypass::reset();
+        $_POST = [];
     }
 
-    private function configure( array $endpointRules, array $whitelistIps = [], bool $enabled = true ) : void {
+    private function configure( array $endpointRules, bool $enabled = true ) : void {
         RateLimit::configure([
-            'enabled'       => $enabled,
-            'storage_dir'   => '/tmp/dummy',  // MemoryStore で上書きするので使わない
-            'whitelist_ips' => $whitelistIps,
-            'endpoints'     => ['submit' => $endpointRules],
+            'enabled'     => $enabled,
+            'storage_dir' => '/tmp/dummy',  // MemoryStore で上書きするので使わない
+            'endpoints'   => ['submit' => $endpointRules],
         ]);
         RateLimit::setStoreForTest($this->store);
     }
@@ -85,7 +89,7 @@ class RateLimitTest extends TestCase {
     }
 
     public function test_enabled_false_なら_常に_true(): void {
-        $this->configure([['key' => 'ip', 'limit' => 1, 'window' => 60]], [], false);
+        $this->configure([['key' => 'ip', 'limit' => 1, 'window' => 60]], false);
 
         $this->assertTrue(RateLimit::check('submit'));
         $this->assertTrue(RateLimit::check('submit'));
@@ -97,31 +101,52 @@ class RateLimitTest extends TestCase {
         $this->assertTrue(RateLimit::check('not_configured'));
     }
 
-    // ---- ホワイトリスト ----
+    // ---- dev_bypass（IP ホワイトリストの代替）----
 
-    public function test_whitelist_完全一致_IP_は無制限(): void {
-        $this->configure([['key' => 'ip', 'limit' => 1, 'window' => 60]], ['203.0.113.1']);
+    public function test_dev_bypass_一致でレート制限を通過_カウント増加なし(): void {
+        $this->configure([['key' => 'ip', 'limit' => 1, 'window' => 60]]);
+        DevBypass::configure([
+            'enabled' => true,
+            'bypass'  => ['rate_limit'],
+            'match'   => ['email' => ['qa@example.com']],
+            'expires_at' => '2099-12-31',
+        ]);
 
-        $this->assertTrue(RateLimit::check('submit'));
-        $this->assertTrue(RateLimit::check('submit'));
-        $this->assertTrue(RateLimit::check('submit'));
+        $data = ['email' => 'qa@example.com'];
+        $this->assertTrue(RateLimit::check('submit', $data));
+        $this->assertTrue(RateLimit::check('submit', $data));
+        $this->assertTrue(RateLimit::check('submit', $data));
+        // バイパス時はカウンタを増やさない
         $this->assertSame(0, $this->store->countWithin('submit:ip:203.0.113.1', 60));
     }
 
-    public function test_whitelist_CIDR_帯にマッチすれば無制限(): void {
-        $_SERVER['REMOTE_ADDR'] = '172.20.5.10';
-        $this->configure([['key' => 'ip', 'limit' => 1, 'window' => 60]], ['172.20.0.0/16']);
+    public function test_dev_bypass_不一致なら通常評価(): void {
+        $this->configure([['key' => 'ip', 'limit' => 1, 'window' => 60]]);
+        DevBypass::configure([
+            'enabled' => true,
+            'bypass'  => ['rate_limit'],
+            'match'   => ['email' => ['qa@example.com']],
+            'expires_at' => '2099-12-31',
+        ]);
 
-        $this->assertTrue(RateLimit::check('submit'));
-        $this->assertTrue(RateLimit::check('submit'));
+        $data = ['email' => 'random@example.com'];
+        $this->assertTrue(RateLimit::check('submit', $data));
+        $this->assertFalse(RateLimit::check('submit', $data));
     }
 
-    public function test_whitelist_CIDR_範囲外なら通常評価(): void {
-        $_SERVER['REMOTE_ADDR'] = '10.0.0.1';
-        $this->configure([['key' => 'ip', 'limit' => 1, 'window' => 60]], ['172.20.0.0/16']);
+    public function test_dev_bypass_data省略時は_POSTを読む(): void {
+        $this->configure([['key' => 'ip', 'limit' => 1, 'window' => 60]]);
+        DevBypass::configure([
+            'enabled' => true,
+            'bypass'  => ['rate_limit'],
+            'match'   => ['email' => ['qa@example.com']],
+            'expires_at' => '2099-12-31',
+        ]);
+        $_POST = ['email' => 'qa@example.com'];
 
         $this->assertTrue(RateLimit::check('submit'));
-        $this->assertFalse(RateLimit::check('submit'));
+        $this->assertTrue(RateLimit::check('submit'));
+        $this->assertSame(0, $this->store->countWithin('submit:ip:203.0.113.1', 60));
     }
 
     // ---- X-Forwarded-For ----

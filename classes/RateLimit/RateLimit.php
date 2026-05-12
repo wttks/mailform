@@ -2,6 +2,7 @@
 
 namespace AIJOH\RateLimit;
 
+use AIJOH\Http\DevBypass;
 use AIJOH\Http\Response;
 use AIJOH\Http\Session;
 
@@ -13,9 +14,8 @@ use AIJOH\Http\Session;
  *
  * 設定例（config.php）:
  *   'rate_limit' => [
- *       'enabled'       => true,
- *       'storage_dir'   => sys_get_temp_dir() . '/mailform_ratelimit',
- *       'whitelist_ips' => ['127.0.0.1', '::1', '172.20.0.0/16'],
+ *       'enabled'     => true,
+ *       'storage_dir' => sys_get_temp_dir() . '/mailform_ratelimit',
  *       'endpoints' => [
  *           'submit' => [
  *               ['key' => 'ip',      'limit' => 5,  'window' => 60],
@@ -23,6 +23,14 @@ use AIJOH\Http\Session;
  *           ],
  *       ],
  *   ]
+ *
+ * 開発者が連投テストしたい場合は IP ホワイトリストではなく `dev_bypass` を使う:
+ *   'dev_bypass' => [
+ *       'enabled' => true,
+ *       'bypass'  => ['rate_limit'],
+ *       'match'   => ['email' => ['qa@example.com']],
+ *   ]
+ * （X-Forwarded-For 偽装で IP ホワイトリストを迂回される問題を回避するため）
  */
 class RateLimit {
 
@@ -71,17 +79,20 @@ class RateLimit {
      * テスト用にも使える純粋ロジック。
      *
      * @param string|RateLimitEndpoint $endpoint エンドポイント識別子（enum または文字列）
+     * @param array|null $data dev_bypass 判定に使う POST データ。null なら $_POST を読む。
      */
-    public static function check( string|RateLimitEndpoint $endpoint ) : bool {
+    public static function check( string|RateLimitEndpoint $endpoint, ?array $data = null ) : bool {
         $endpointName = $endpoint instanceof RateLimitEndpoint ? $endpoint->value : $endpoint;
         if ( self::$disabled || self::$config === null || empty(self::$config['enabled']) ) {
             return true;
         }
 
-        $ip = self::getClientIp();
-        if ( self::isWhitelisted($ip) ) {
+        // dev_bypass: 特定の入力値が一致したらレート制限を通す（IP ホワイトリスト代替）
+        if ( DevBypass::shouldBypass('rate_limit', $data ?? $_POST) ) {
             return true;
         }
+
+        $ip = self::getClientIp();
 
         $rules = self::$config['endpoints'][ $endpointName ] ?? [];
         if ( empty($rules) ) {
@@ -120,9 +131,10 @@ class RateLimit {
      * エンドポイントの上限を評価し、超過時は 429 相当のレスポンスで exit する。
      *
      * @param string|RateLimitEndpoint $endpoint エンドポイント識別子
+     * @param array|null $data dev_bypass 判定に使う POST データ。null なら $_POST を読む。
      */
-    public static function checkOrAbort( string|RateLimitEndpoint $endpoint ) : void {
-        if ( ! self::check($endpoint) ) {
+    public static function checkOrAbort( string|RateLimitEndpoint $endpoint, ?array $data = null ) : void {
+        if ( ! self::check($endpoint, $data) ) {
             Response::jsonResults(false, '送信が制限されています。しばらくしてから再度お試しください。');
         }
     }
@@ -193,38 +205,5 @@ class RateLimit {
         return null;
     }
 
-
-    private static function isWhitelisted( string $ip ) : bool {
-        $list = self::$config['whitelist_ips'] ?? [];
-        foreach ( $list as $entry ) {
-            if ( self::ipMatches($ip, $entry) ) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-
-    /**
-     * IP アドレスを単一 IP / CIDR (例: 172.20.0.0/16) と照合する。
-     * IPv4 のみ簡易対応。IPv6 は完全一致のみ判定。
-     */
-    private static function ipMatches( string $ip, string $pattern ) : bool {
-        if ( $ip === $pattern ) {
-            return true;
-        }
-        if ( str_contains($pattern, '/') ) {
-            [$subnet, $bits] = explode('/', $pattern, 2);
-            $bits = (int) $bits;
-            $ipLong     = ip2long($ip);
-            $subnetLong = ip2long($subnet);
-            if ( $ipLong === false || $subnetLong === false ) {
-                return false;
-            }
-            $mask = $bits === 0 ? 0 : (~0 << (32 - $bits)) & 0xFFFFFFFF;
-            return ($ipLong & $mask) === ($subnetLong & $mask);
-        }
-        return false;
-    }
 
 }

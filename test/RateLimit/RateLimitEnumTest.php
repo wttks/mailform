@@ -23,7 +23,6 @@ class RateLimitEnumTest extends TestCase {
         RateLimit::configure([
             'enabled' => true,
             'storage_dir' => '/tmp/dummy',
-            'whitelist_ips' => [],
             'endpoints' => [
                 'submit'   => [['key' => 'ip', 'limit' => 2, 'window' => 60]],
                 'validate' => [['key' => 'ip', 'limit' => 5, 'window' => 60]],
