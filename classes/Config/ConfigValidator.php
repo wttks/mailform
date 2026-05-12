@@ -29,6 +29,93 @@ class ConfigValidator {
         self::validateDraft($config);
         self::validateRedirectUrls($config);
         self::validateSender($config);
+        self::validateDevBypass($config);
+    }
+
+
+    /**
+     * dev_bypass セクションの検証。
+     *
+     * enabled=true のときに限り bypass / match を必須で検証する。
+     * IP ホワイトリストの代替として「特定の入力値が一致したら防御層をバイパス」する設定。
+     */
+    private static function validateDevBypass( array $config ) : void {
+        if ( ! isset($config['dev_bypass']) ) {
+            return;
+        }
+        $dev = $config['dev_bypass'];
+        if ( ! is_array($dev) ) {
+            throw new ConfigException("dev_bypass は配列である必要があります。");
+        }
+        if ( isset($dev['enabled']) && ! is_bool($dev['enabled']) ) {
+            throw new ConfigException("dev_bypass.enabled は bool である必要があります。");
+        }
+        if ( empty($dev['enabled']) ) {
+            return;
+        }
+
+        // bypass: 'rate_limit' / 'ai_spam' のいずれかの文字列を含む非空配列
+        if ( ! isset($dev['bypass']) ) {
+            throw new ConfigException("dev_bypass.bypass は必須です（バイパスする防御層を指定）。");
+        }
+        if ( ! is_array($dev['bypass']) || empty($dev['bypass']) ) {
+            throw new ConfigException("dev_bypass.bypass は非空の配列である必要があります。");
+        }
+        $validLayers = [ 'rate_limit', 'ai_spam' ];
+        foreach ( $dev['bypass'] as $i => $layer ) {
+            if ( ! is_string($layer) || ! in_array($layer, $validLayers, true) ) {
+                throw new ConfigException(
+                    "dev_bypass.bypass[{$i}] は " . implode(' / ', $validLayers) . " のいずれかである必要があります。"
+                    . " 現在: '" . (is_scalar($layer) ? (string) $layer : gettype($layer)) . "'"
+                );
+            }
+        }
+
+        // match: Closure または配列
+        if ( ! isset($dev['match']) ) {
+            throw new ConfigException("dev_bypass.match は必須です（バイパス判定の条件）。");
+        }
+        $match = $dev['match'];
+        if ( ! ( $match instanceof \Closure ) && ! is_array($match) ) {
+            throw new ConfigException("dev_bypass.match は Closure または配列である必要があります。");
+        }
+        if ( is_array($match) ) {
+            if ( empty($match) ) {
+                throw new ConfigException("dev_bypass.match (配列形式) は非空である必要があります。");
+            }
+            foreach ( $match as $field => $values ) {
+                if ( ! is_string($field) ) {
+                    throw new ConfigException("dev_bypass.match のキーはフィールド名（文字列）である必要があります。");
+                }
+                if ( ! is_string($values) && ! is_array($values) ) {
+                    throw new ConfigException("dev_bypass.match.{$field} は文字列または文字列配列である必要があります。");
+                }
+                if ( is_array($values) ) {
+                    foreach ( $values as $i => $v ) {
+                        if ( ! is_string($v) ) {
+                            throw new ConfigException("dev_bypass.match.{$field}[{$i}] は文字列である必要があります。");
+                        }
+                    }
+                }
+            }
+        }
+
+        // expires_at: 任意、文字列で解析可能な日付
+        if ( isset($dev['expires_at']) ) {
+            if ( ! is_string($dev['expires_at']) ) {
+                throw new ConfigException("dev_bypass.expires_at は 'YYYY-MM-DD' 形式の文字列である必要があります。");
+            }
+            if ( strtotime($dev['expires_at']) === false ) {
+                throw new ConfigException("dev_bypass.expires_at が日付として解析できません: '{$dev['expires_at']}'");
+            }
+        } else {
+            // enabled=true で期限なし → 長期放置リスク
+            error_log(
+                "[mailform] WARN: dev_bypass.enabled=true ですが expires_at が未設定です。"
+                . " 長期間放置されると意図せず開発者用バックドアが残ります。"
+                . " expires_at に近い日付（例: '2026-12-31'）を設定することを推奨します。"
+            );
+        }
     }
 
 

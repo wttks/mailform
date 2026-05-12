@@ -615,4 +615,212 @@ class ConfigValidatorTest extends TestCase {
         ]);
     }
 
+
+    // ---- dev_bypass ----
+
+    public function test_dev_bypass_未設定でもOK() : void {
+        ConfigValidator::validate($this->validBase());
+        $this->assertTrue(true);
+    }
+
+
+    public function test_dev_bypass_enabled_false_なら他の検証はスキップ() : void {
+        ConfigValidator::validate($this->validBase() + [
+            'dev_bypass' => [ 'enabled' => false ],
+        ]);
+        $this->assertTrue(true);
+    }
+
+
+    public function test_dev_bypass_配列以外で例外() : void {
+        $this->expectException(ConfigException::class);
+        $this->expectExceptionMessage('dev_bypass は配列');
+        ConfigValidator::validate($this->validBase() + [ 'dev_bypass' => 'string' ]);
+    }
+
+
+    public function test_dev_bypass_enabled_が_bool以外で例外() : void {
+        $this->expectException(ConfigException::class);
+        $this->expectExceptionMessage('dev_bypass.enabled は bool');
+        ConfigValidator::validate($this->validBase() + [
+            'dev_bypass' => [ 'enabled' => 'true' ],
+        ]);
+    }
+
+
+    public function test_dev_bypass_enabled_true_で_bypass_未設定なら例外() : void {
+        $this->expectException(ConfigException::class);
+        $this->expectExceptionMessage('dev_bypass.bypass は必須');
+        ConfigValidator::validate($this->validBase() + [
+            'dev_bypass' => [
+                'enabled' => true,
+                'match'   => [ 'email' => [ 'qa@example.com' ] ],
+                'expires_at' => '2099-12-31',
+            ],
+        ]);
+    }
+
+
+    public function test_dev_bypass_bypass_が_空配列で例外() : void {
+        $this->expectException(ConfigException::class);
+        $this->expectExceptionMessage('dev_bypass.bypass は非空');
+        ConfigValidator::validate($this->validBase() + [
+            'dev_bypass' => [
+                'enabled' => true,
+                'bypass'  => [],
+                'match'   => [ 'email' => [ 'qa@example.com' ] ],
+                'expires_at' => '2099-12-31',
+            ],
+        ]);
+    }
+
+
+    public function test_dev_bypass_bypass_に_未定義の層で例外() : void {
+        $this->expectException(ConfigException::class);
+        $this->expectExceptionMessage('dev_bypass.bypass[0]');
+        ConfigValidator::validate($this->validBase() + [
+            'dev_bypass' => [
+                'enabled' => true,
+                'bypass'  => [ 'unknown_layer' ],
+                'match'   => [ 'email' => [ 'qa@example.com' ] ],
+                'expires_at' => '2099-12-31',
+            ],
+        ]);
+    }
+
+
+    public function test_dev_bypass_match_未設定で例外() : void {
+        $this->expectException(ConfigException::class);
+        $this->expectExceptionMessage('dev_bypass.match は必須');
+        ConfigValidator::validate($this->validBase() + [
+            'dev_bypass' => [
+                'enabled' => true,
+                'bypass'  => [ 'rate_limit' ],
+                'expires_at' => '2099-12-31',
+            ],
+        ]);
+    }
+
+
+    public function test_dev_bypass_match_が_Closure_でも配列でもなければ例外() : void {
+        $this->expectException(ConfigException::class);
+        $this->expectExceptionMessage('dev_bypass.match は Closure または配列');
+        ConfigValidator::validate($this->validBase() + [
+            'dev_bypass' => [
+                'enabled' => true,
+                'bypass'  => [ 'rate_limit' ],
+                'match'   => 'string',
+                'expires_at' => '2099-12-31',
+            ],
+        ]);
+    }
+
+
+    public function test_dev_bypass_match_配列が空で例外() : void {
+        $this->expectException(ConfigException::class);
+        $this->expectExceptionMessage('dev_bypass.match (配列形式) は非空');
+        ConfigValidator::validate($this->validBase() + [
+            'dev_bypass' => [
+                'enabled' => true,
+                'bypass'  => [ 'rate_limit' ],
+                'match'   => [],
+                'expires_at' => '2099-12-31',
+            ],
+        ]);
+    }
+
+
+    public function test_dev_bypass_match_の値が文字列でも配列でもなければ例外() : void {
+        $this->expectException(ConfigException::class);
+        $this->expectExceptionMessage('dev_bypass.match.email');
+        ConfigValidator::validate($this->validBase() + [
+            'dev_bypass' => [
+                'enabled' => true,
+                'bypass'  => [ 'rate_limit' ],
+                'match'   => [ 'email' => 123 ],
+                'expires_at' => '2099-12-31',
+            ],
+        ]);
+    }
+
+
+    public function test_dev_bypass_expires_at_が文字列以外で例外() : void {
+        $this->expectException(ConfigException::class);
+        $this->expectExceptionMessage('dev_bypass.expires_at');
+        ConfigValidator::validate($this->validBase() + [
+            'dev_bypass' => [
+                'enabled' => true,
+                'bypass'  => [ 'rate_limit' ],
+                'match'   => [ 'email' => [ 'qa@example.com' ] ],
+                'expires_at' => 20991231,
+            ],
+        ]);
+    }
+
+
+    public function test_dev_bypass_expires_at_が解析不能で例外() : void {
+        $this->expectException(ConfigException::class);
+        $this->expectExceptionMessage('日付として解析できません');
+        ConfigValidator::validate($this->validBase() + [
+            'dev_bypass' => [
+                'enabled' => true,
+                'bypass'  => [ 'rate_limit' ],
+                'match'   => [ 'email' => [ 'qa@example.com' ] ],
+                'expires_at' => 'invalid-date-format',
+            ],
+        ]);
+    }
+
+
+    public function test_dev_bypass_正しい設定なら例外なし_リスト形式() : void {
+        ConfigValidator::validate($this->validBase() + [
+            'dev_bypass' => [
+                'enabled' => true,
+                'bypass'  => [ 'rate_limit', 'ai_spam' ],
+                'match'   => [ 'email' => [ 'qa@example.com', 'staff@example.com' ] ],
+                'expires_at' => '2099-12-31',
+            ],
+        ]);
+        $this->assertTrue(true);
+    }
+
+
+    public function test_dev_bypass_正しい設定なら例外なし_Closure形式() : void {
+        ConfigValidator::validate($this->validBase() + [
+            'dev_bypass' => [
+                'enabled' => true,
+                'bypass'  => [ 'rate_limit' ],
+                'match'   => fn( array $d ) : bool => false,
+                'expires_at' => '2099-12-31',
+            ],
+        ]);
+        $this->assertTrue(true);
+    }
+
+
+    public function test_dev_bypass_match_の単一値文字列でもOK() : void {
+        ConfigValidator::validate($this->validBase() + [
+            'dev_bypass' => [
+                'enabled' => true,
+                'bypass'  => [ 'rate_limit' ],
+                'match'   => [ 'email' => 'qa@example.com' ],  // 配列でなく文字列
+                'expires_at' => '2099-12-31',
+            ],
+        ]);
+        $this->assertTrue(true);
+    }
+
+
+    public function test_dev_bypass_expires_at_未設定なら_WARNログ出力() : void {
+        // error_log は実際にログに出る。例外無しの動作確認のみ行う。
+        ConfigValidator::validate($this->validBase() + [
+            'dev_bypass' => [
+                'enabled' => true,
+                'bypass'  => [ 'rate_limit' ],
+                'match'   => [ 'email' => [ 'qa@example.com' ] ],
+                // expires_at 未設定
+            ],
+        ]);
+        $this->assertTrue(true);
+    }
 }
