@@ -11,6 +11,10 @@ class Response {
      */
     public static function json( array $data ) : void {
         header('Content-Type: application/json; charset=utf-8');
+        // 古いブラウザの content-sniffing による XSS リスクを塞ぐ。
+        // エラーメッセージにユーザー入力（:value プレースホルダ展開）が
+        // 混ざるため、レスポンスが HTML として解釈される経路を消す。
+        header('X-Content-Type-Options: nosniff');
         echo json_encode($data);
     }
 
