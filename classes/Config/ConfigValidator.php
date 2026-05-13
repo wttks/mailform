@@ -30,6 +30,34 @@ class ConfigValidator {
         self::validateRedirectUrls($config);
         self::validateSender($config);
         self::validateDevBypass($config);
+        self::validateLang($config);
+    }
+
+
+    /**
+     * lang セクションの検証（path traversal 阻止）。
+     *
+     * Translator::setLocale() に渡される locale 値が外部パスを参照しないよう
+     * 起動時に構文検証する。Translator 側でも二重に検証されるが、設定経由の
+     * 経路は起動時に ConfigException で停止させたい。
+     */
+    private static function validateLang( array $config ) : void {
+        if ( ! isset($config['lang']) ) {
+            return;
+        }
+        $lang = $config['lang'];
+        if ( ! is_string($lang) ) {
+            throw new ConfigException("lang は文字列である必要があります。");
+        }
+        if ( $lang === '' ) {
+            // 空文字は無視（Translator がデフォルトのまま据え置く）
+            return;
+        }
+        if ( preg_match('/^[a-zA-Z0-9_-]{1,16}$/', $lang) !== 1 ) {
+            throw new ConfigException(
+                "lang は 1〜16 文字の英数字 / アンダースコア / ハイフンで指定してください。現在: '{$lang}'"
+            );
+        }
     }
 
 

@@ -823,4 +823,58 @@ class ConfigValidatorTest extends TestCase {
         ]);
         $this->assertTrue(true);
     }
+
+
+    // ---- lang ----
+
+    public function test_lang_未設定でもOK() : void {
+        ConfigValidator::validate($this->validBase());
+        $this->assertTrue(true);
+    }
+
+
+    public function test_lang_文字列以外で例外() : void {
+        $this->expectException(ConfigException::class);
+        $this->expectExceptionMessage('lang は文字列');
+        ConfigValidator::validate($this->validBase() + [ 'lang' => 123 ]);
+    }
+
+
+    public function test_lang_空文字列はOK_Translator側でデフォルト維持() : void {
+        ConfigValidator::validate($this->validBase() + [ 'lang' => '' ]);
+        $this->assertTrue(true);
+    }
+
+
+    public function test_lang_path_traversal_で例外() : void {
+        $this->expectException(ConfigException::class);
+        $this->expectExceptionMessage('lang は');
+        ConfigValidator::validate($this->validBase() + [ 'lang' => '../../etc/passwd' ]);
+    }
+
+
+    public function test_lang_スラッシュ含みで例外() : void {
+        $this->expectException(ConfigException::class);
+        ConfigValidator::validate($this->validBase() + [ 'lang' => 'en/ja' ]);
+    }
+
+
+    public function test_lang_ドット含みで例外() : void {
+        $this->expectException(ConfigException::class);
+        ConfigValidator::validate($this->validBase() + [ 'lang' => 'en.php' ]);
+    }
+
+
+    public function test_lang_長すぎる値で例外() : void {
+        $this->expectException(ConfigException::class);
+        ConfigValidator::validate($this->validBase() + [ 'lang' => str_repeat('a', 17) ]);
+    }
+
+
+    public function test_lang_正常値ならOK() : void {
+        foreach ( [ 'ja', 'en', 'zh_CN', 'pt_BR', 'en-GB' ] as $lang ) {
+            ConfigValidator::validate($this->validBase() + [ 'lang' => $lang ]);
+        }
+        $this->assertTrue(true);
+    }
 }
