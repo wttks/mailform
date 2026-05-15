@@ -360,19 +360,23 @@ class ConfigValidator {
     /**
      * リダイレクト URL が安全か検証する。
      *
+     * 許可するパターン:
+     *   1. 相対パス ( '/path/to' で始まる、'//' は除く )
+     *   2. 同一ホスト ( HTTP_HOST と一致 ) の絶対 URL ( http:// or https:// )
+     *   3. allowed_redirect_hosts に含まれるホストの絶対 URL ( http:// or https:// )
+     *
+     * 上記以外 ( javascript:/data:/file:/mailto:/ftp:/プロトコル相対/制御文字混入等 ) はすべて拒否。
+     *
      * @param string[] $allowedHosts 許可ホスト ( 小文字 )
-     * @throws ConfigException 危険スキーム / 許可リスト外の外部ホスト
+     * @throws ConfigException
      */
     private static function assertSafeRedirectUrl( string $url, string $configKey, array $allowedHosts ) : void {
-        // 危険スキーム: javascript:, data:, vbscript:, file:, ftp:, jar: 等
-        $dangerousSchemes = [ 'javascript', 'data', 'vbscript', 'file', 'jar', 'view-source' ];
-        $lower = strtolower(trim($url));
-        foreach ( $dangerousSchemes as $scheme ) {
-            if ( str_starts_with($lower, $scheme . ':') ) {
-                throw new ConfigException(
-                    "{$configKey} に危険なスキーム ({$scheme}:) が含まれています: '{$url}'"
-                );
-            }
+        // 制御文字 ( 改行 / NUL / タブ等 ) を含む URL は拒否
+        // 例: "java\nscript:alert(1)" のように改行で危険スキームチェックをすり抜けようとする攻撃
+        if ( preg_match('/[\x00-\x1F\x7F]/', $url) === 1 ) {
+            throw new ConfigException(
+                "{$configKey} に制御文字が含まれています: '" . self::printableUrl($url) . "'"
+            );
         }
         // プロトコル相対 URL `//host/path` は拒否
         // ( //host の host を allowed_redirect_hosts と照合する仕様もあり得るが、
@@ -384,6 +388,10 @@ class ConfigValidator {
                 . " allowed_redirect_hosts への追加で指定してください。"
             );
         }
+        // 相対パス ( '/...' で始まり '//' を除く ) は許可
+        if ( str_starts_with($url, '/') ) {
+            return;
+        }
         // 絶対 URL ( http(s):// ) のホスト検証
         if ( preg_match('/^https?:\/\//i', $url) === 1 ) {
             $configHost = parse_url($url, PHP_URL_HOST);
@@ -394,9 +402,11 @@ class ConfigValidator {
             }
             $configHostLower = strtolower($configHost);
             $requestHost = strtolower((string) ( $_SERVER['HTTP_HOST'] ?? '' ));
+            // HTTP_HOST に含まれるポート番号 ( :8080 等 ) を除いてホスト名だけで比較する
+            $requestHostName = $requestHost !== '' ? (explode(':', $requestHost, 2)[0] ?? '') : '';
 
-            // 同一ホストは OK
-            if ( $requestHost !== '' && $configHostLower === $requestHost ) {
+            // 同一ホストは OK ( ポートは無視 )
+            if ( $requestHostName !== '' && $configHostLower === $requestHostName ) {
                 return;
             }
             // 許可リストに含まれる外部ホストも OK
@@ -408,6 +418,22 @@ class ConfigValidator {
                 . " 外部リダイレクト先は allowed_redirect_hosts に明示してください: '{$url}'"
             );
         }
+        // 上記いずれにも該当しない ( javascript:, data:, mailto:, ftp:, file:, スキームなしの裸文字列等 )
+        throw new ConfigException(
+            "{$configKey} は相対パス ( '/path' ) または http(s):// で始まる絶対 URL のみ指定できます: '{$url}'"
+        );
+    }
+
+
+    /**
+     * エラーメッセージ用に URL の制御文字を可視化する。
+     */
+    private static function printableUrl( string $url ) : string {
+        return preg_replace_callback(
+            '/[\x00-\x1F\x7F]/',
+            static fn($m) => sprintf('\\x%02X', ord($m[0])),
+            $url
+        );
     }
 
 

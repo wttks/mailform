@@ -514,6 +514,50 @@ class ConfigValidatorTest extends TestCase {
         ]);
     }
 
+
+    public function test_complete_url_mailtoスキームは拒否() : void {
+        $this->expectException(ConfigException::class);
+        ConfigValidator::validate($this->validBase() + [
+            'complete_url' => 'mailto:user@example.com',
+        ]);
+    }
+
+
+    public function test_complete_url_ftpスキームは拒否() : void {
+        $this->expectException(ConfigException::class);
+        ConfigValidator::validate($this->validBase() + [
+            'complete_url' => 'ftp://evil.example/path',
+        ]);
+    }
+
+
+    public function test_complete_url_スキームなしの裸文字列は拒否() : void {
+        $this->expectException(ConfigException::class);
+        ConfigValidator::validate($this->validBase() + [
+            'complete_url' => 'evil.example.com/path',
+        ]);
+    }
+
+
+    public function test_complete_url_改行入りスキーム偽装は制御文字で拒否() : void {
+        // "java\nscript:alert(1)" のような改行混入で danger schema 検知をすり抜ける攻撃
+        $this->expectException(ConfigException::class);
+        $this->expectExceptionMessage('制御文字');
+        ConfigValidator::validate($this->validBase() + [
+            'complete_url' => "java\nscript:alert(1)",
+        ]);
+    }
+
+
+    public function test_complete_url_HTTP_HOSTにポート付きでも同一ホスト判定() : void {
+        // example.com:8080 でも example.com の絶対 URL を OK と判定すべき
+        $_SERVER['HTTP_HOST'] = 'example.com:8080';
+        ConfigValidator::validate($this->validBase() + [
+            'complete_url' => 'https://example.com/thanks',
+        ]);
+        $this->assertTrue(true);
+    }
+
     // ---- sender.max_recipients_per_request ----
 
     public function test_max_recipients_per_request_正の整数はOK() : void {
