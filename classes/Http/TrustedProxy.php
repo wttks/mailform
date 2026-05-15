@@ -220,6 +220,11 @@ class TrustedProxy {
      * X-Forwarded-For を IP のリストに分解する。
      * "client, proxy1, proxy2" を ["client", "proxy1", "proxy2"] に。
      *
+     * 各要素は inet_pton で IP 形式検証し、不正な値 ( ホスト名 / 制御文字混入 /
+     * `unknown` 等 ) はリストから除外する。これがないと、edge proxy が incoming
+     * XFF を strip/overwrite せず append する構成で、攻撃者が任意の文字列を
+     * 先頭 XFF に注入してレート制限カウンタキーを分散させられる。
+     *
      * @return string[]
      */
     private static function parseForwardedFor() : array {
@@ -231,9 +236,14 @@ class TrustedProxy {
         $result = [];
         foreach ( $parts as $p ) {
             $p = trim($p);
-            if ( $p !== '' ) {
-                $result[] = $p;
+            if ( $p === '' ) {
+                continue;
             }
+            // 不正な値 ( IP 形式でない / 制御文字含む / unknown 等 ) は無視
+            if ( @inet_pton($p) === false ) {
+                continue;
+            }
+            $result[] = $p;
         }
         return $result;
     }
