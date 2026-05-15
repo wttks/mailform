@@ -163,6 +163,20 @@ class RateLimitTest extends TestCase {
     }
 
 
+    public function test_REMOTE_ADDR空でも_unknown_でカウントされてfail_closed(): void {
+        // 環境不備 ( REMOTE_ADDR 未設定 / 空 ) でも IP レート制限が機能すること
+        $_SERVER['REMOTE_ADDR'] = '';
+        unset($_SERVER['HTTP_X_FORWARDED_FOR']);
+        $this->configure([['key' => 'ip', 'limit' => 2, 'window' => 60]]);
+
+        $this->assertTrue(RateLimit::check('submit'));
+        $this->assertTrue(RateLimit::check('submit'));
+        $this->assertFalse(RateLimit::check('submit'),
+            'IP 不明クライアントもまとめてカウントされ、上限超過で false');
+        $this->assertSame(2, $this->store->countWithin('submit:ip:w60:unknown', 60));
+    }
+
+
     public function test_TrustedProxy設定済み_XFFから真クライアントIPでカウント(): void {
         // プロキシ越し配置 ( trusted_proxies 設定済み + REMOTE_ADDR が trusted ) では
         // XFF を辿って真クライアント IP でカウントされる

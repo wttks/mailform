@@ -159,6 +159,11 @@ class RateLimit {
      *
      * window 秒数をキーに含めることで、同じ keyType でも window が違えば別カウンタになる。
      * これにより複数ルールの atomic 評価がルール毎の独立 checkAndRecord で正しく動く。
+     *
+     * IP / session が空の場合は固定の 'unknown' を使う ( fail-closed )。
+     * これにより環境不備 ( REMOTE_ADDR 取得失敗 / セッション未開始 ) で
+     * IP / session 不明のリクエストが「制限なし通過」になることを防ぐ。
+     * 不明クライアントはまとめて 1 つのカウンタを共有する。
      */
     private static function buildKey( string $endpointName, string $keyType, int $windowSec, string $ip, ?string $sessionId ) : ?string {
         $value = match ( $keyType ) {
@@ -166,8 +171,13 @@ class RateLimit {
             'session' => $sessionId,
             default   => null,
         };
-        if ( $value === null || $value === '' ) {
+        if ( $value === null ) {
+            // 未対応の keyType: rule をスキップする ( 設定ミスを通過させない )
             return null;
+        }
+        if ( $value === '' ) {
+            // 取得失敗時は fail-closed: 'unknown' で代表させる
+            $value = 'unknown';
         }
         return $endpointName . ':' . $keyType . ':w' . $windowSec . ':' . $value;
     }
