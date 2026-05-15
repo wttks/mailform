@@ -94,4 +94,77 @@ class VerifyCsrfTokenTest extends TestCase {
         $this->assertSame('トークンが一致しません。再度お試しください。', $verify->getErrorMessage());
     }
 
+
+    // ---- CSPRNG 失敗時の fail-closed / weak fallback ----
+
+    public function test_CSPRNG失敗_デフォルトでは例外を投げる_fail_closed(): void {
+        $verify = new class extends VerifyCsrfToken {
+            protected function tryRandomBytes( int $length ) : string {
+                throw new \Exception('simulated CSPRNG failure');
+            }
+        };
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('CSPRNG unavailable');
+        $verify->form();
+    }
+
+
+    public function test_CSPRNG失敗_allow_weak_fallback_trueで_sha1_に_fallback(): void {
+        $verify = new class(['allow_weak_fallback' => true]) extends VerifyCsrfToken {
+            protected function tryRandomBytes( int $length ) : string {
+                throw new \Exception('simulated CSPRNG failure');
+            }
+        };
+
+        $html = $verify->form();
+        // sha1(uniqid('', true)) は 40 文字の hex
+        $this->assertMatchesRegularExpression(
+            "/value='[0-9a-f]{40}'/",
+            $html,
+            'allow_weak_fallback=true なら sha1 で代替されること'
+        );
+        $this->assertNotEmpty($_SESSION['form_csrf_token']);
+    }
+
+
+    public function test_CSPRNG失敗時_error_logに必ず記録される_fail_closedでも(): void {
+        $verify = new class extends VerifyCsrfToken {
+            protected function tryRandomBytes( int $length ) : string {
+                throw new \Exception('simulated CSPRNG failure');
+            }
+        };
+
+        // ini_set で error_log を一時ファイルに切替
+        $logFile = tempnam(sys_get_temp_dir(), 'mfcsrf_');
+        $originalLog = ini_get('error_log');
+        ini_set('error_log', $logFile);
+
+        try {
+            try {
+                $verify->form();
+                $this->fail('RuntimeException が投げられるべき');
+            } catch ( \RuntimeException $e ) {
+                // 期待動作
+            }
+
+            $logContents = (string) file_get_contents($logFile);
+            $this->assertStringContainsString('CSPRNG ( random_bytes ) failure', $logContents,
+                '例外を投げる前に必ず error_log に原因を記録する');
+            $this->assertStringContainsString('simulated CSPRNG failure', $logContents,
+                '元例外のメッセージも記録に含まれる');
+        } finally {
+            ini_set('error_log', $originalLog);
+            @unlink($logFile);
+        }
+    }
+
+
+    public function test_通常動作_random_bytes成功なら32バイトhex_64文字(): void {
+        $verify = new VerifyCsrfToken();
+        $html = $verify->form();
+        // bin2hex(random_bytes(32)) は 64 文字の hex
+        $this->assertMatchesRegularExpression("/value='[0-9a-f]{64}'/", $html);
+    }
+
 }
