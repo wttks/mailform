@@ -440,6 +440,80 @@ class ConfigValidatorTest extends TestCase {
         $this->assertTrue(true);
     }
 
+
+    public function test_complete_url_プロトコル相対は例外() : void {
+        $this->expectException(ConfigException::class);
+        $this->expectExceptionMessage('プロトコル相対 URL');
+        ConfigValidator::validate($this->validBase() + [
+            'complete_url' => '//evil.example.com/path',
+        ]);
+    }
+
+
+    public function test_complete_url_別ホスト絶対URLは許可リストなしで例外() : void {
+        $_SERVER['HTTP_HOST'] = 'example.com';
+        $this->expectException(ConfigException::class);
+        $this->expectExceptionMessage('は許可されていません');
+        ConfigValidator::validate($this->validBase() + [
+            'complete_url' => 'https://attacker.example.org/landing',
+        ]);
+    }
+
+
+    public function test_complete_url_許可リスト内の別ホスト絶対URLはOK() : void {
+        $_SERVER['HTTP_HOST'] = 'example.com';
+        ConfigValidator::validate($this->validBase() + [
+            'complete_url'           => 'https://partner.example.org/thanks',
+            'allowed_redirect_hosts' => [ 'partner.example.org' ],
+        ]);
+        $this->assertTrue(true);
+    }
+
+
+    public function test_complete_url_許可リスト判定は大文字小文字を区別しない() : void {
+        $_SERVER['HTTP_HOST'] = 'example.com';
+        ConfigValidator::validate($this->validBase() + [
+            'complete_url'           => 'https://Partner.Example.ORG/thanks',
+            'allowed_redirect_hosts' => [ 'partner.example.org' ],
+        ]);
+        $this->assertTrue(true);
+    }
+
+
+    public function test_complete_url_許可リスト外なら同類ホストもNG() : void {
+        $_SERVER['HTTP_HOST'] = 'example.com';
+        $this->expectException(ConfigException::class);
+        ConfigValidator::validate($this->validBase() + [
+            'complete_url'           => 'https://other.example.org/thanks',
+            'allowed_redirect_hosts' => [ 'partner.example.org' ],
+        ]);
+    }
+
+
+    public function test_allowed_redirect_hosts_が配列でなければ例外() : void {
+        $this->expectException(ConfigException::class);
+        ConfigValidator::validate($this->validBase() + [
+            'allowed_redirect_hosts' => 'partner.example.org',
+        ]);
+    }
+
+
+    public function test_allowed_redirect_hosts_要素が空文字なら例外() : void {
+        $this->expectException(ConfigException::class);
+        ConfigValidator::validate($this->validBase() + [
+            'allowed_redirect_hosts' => [ '' ],
+        ]);
+    }
+
+
+    public function test_confirm_url_別ホスト絶対URLも許可リスト方式() : void {
+        $_SERVER['HTTP_HOST'] = 'example.com';
+        $this->expectException(ConfigException::class);
+        ConfigValidator::validate($this->validBase() + [
+            'confirm_url' => 'https://attacker.example.org/page',
+        ]);
+    }
+
     // ---- sender.max_recipients_per_request ----
 
     public function test_max_recipients_per_request_正の整数はOK() : void {

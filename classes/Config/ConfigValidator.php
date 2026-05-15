@@ -311,27 +311,59 @@ class ConfigValidator {
      *
      * mailform は config に hardcoded された URL しかリダイレクト先にできないため、
      * 攻撃者が動的にリダイレクト先を決める経路は通常存在しない。ただし設置者が
-     * config に危険な URL を書いてしまうのを防ぐため、起動時に値を検証する。
+     * config に危険な URL を書いてしまう / config が動的構築されるケースを防ぐため、
+     * 起動時に値を検証する。
      *
      * - `javascript:` `data:` `vbscript:` `file:` 等のスキームは ConfigException
-     * - 絶対 URL でホスト指定がある場合、現在のリクエストホストと違えば WARN ログ
+     * - プロトコル相対 URL `//host/path` は ConfigException ( ホスト判定が曖昧 )
+     * - 絶対 URL でホストが現在のリクエストホスト = HTTP_HOST と一致 → OK
+     * - 絶対 URL でホストが allowed_redirect_hosts に含まれる → OK
+     * - 上記以外の絶対別ホスト URL は ConfigException
      */
     private static function validateRedirectUrls( array $config ) : void {
+        $allowedHosts = self::normalizeAllowedRedirectHosts($config['allowed_redirect_hosts'] ?? []);
         foreach ( [ 'complete_url', 'confirm_url' ] as $key ) {
             $url = $config[ $key ] ?? '';
             if ( ! is_string($url) || $url === '' ) {
                 continue;
             }
-            self::assertSafeRedirectUrl($url, $key);
+            self::assertSafeRedirectUrl($url, $key, $allowedHosts);
         }
     }
 
 
     /**
-     * リダイレクト URL が安全か検証する。
-     * @throws ConfigException 危険スキームの場合
+     * allowed_redirect_hosts の値を小文字配列に正規化する。
+     *
+     * @param mixed $raw config 上の値
+     * @return string[] 小文字ホスト名の配列
+     * @throws ConfigException 形式不正
      */
-    private static function assertSafeRedirectUrl( string $url, string $configKey ) : void {
+    private static function normalizeAllowedRedirectHosts( mixed $raw ) : array {
+        if ( $raw === [] || $raw === null ) {
+            return [];
+        }
+        if ( ! is_array($raw) ) {
+            throw new ConfigException('allowed_redirect_hosts は文字列の配列である必要があります。');
+        }
+        $normalized = [];
+        foreach ( $raw as $host ) {
+            if ( ! is_string($host) || $host === '' ) {
+                throw new ConfigException('allowed_redirect_hosts の各要素は非空文字列である必要があります。');
+            }
+            $normalized[] = strtolower($host);
+        }
+        return $normalized;
+    }
+
+
+    /**
+     * リダイレクト URL が安全か検証する。
+     *
+     * @param string[] $allowedHosts 許可ホスト ( 小文字 )
+     * @throws ConfigException 危険スキーム / 許可リスト外の外部ホスト
+     */
+    private static function assertSafeRedirectUrl( string $url, string $configKey, array $allowedHosts ) : void {
         // 危険スキーム: javascript:, data:, vbscript:, file:, ftp:, jar: 等
         $dangerousSchemes = [ 'javascript', 'data', 'vbscript', 'file', 'jar', 'view-source' ];
         $lower = strtolower(trim($url));
@@ -342,20 +374,39 @@ class ConfigValidator {
                 );
             }
         }
-        // プロトコル相対 URL `//host/path` も外部ホスト向けの可能性があるので警告
+        // プロトコル相対 URL `//host/path` は拒否
+        // ( //host の host を allowed_redirect_hosts と照合する仕様もあり得るが、
+        //   設置者が明示的に絶対 URL を書いた方が意図がはっきりするのでこの形式は拒否 )
         if ( str_starts_with($url, '//') ) {
-            error_log("[ConfigValidator] WARN: {$configKey} がプロトコル相対 URL です。"
-                . "外部ホストにリダイレクトされる可能性があります: {$url}");
-            return;
+            throw new ConfigException(
+                "{$configKey} にプロトコル相対 URL は使えません ( Open Redirect 対策 ): '{$url}'"
+                . " 同一ホスト内なら相対パス '/path' を、外部ホストなら 'https://host/path' と"
+                . " allowed_redirect_hosts への追加で指定してください。"
+            );
         }
-        // 絶対 URL でホストが現在のリクエストと違うなら WARN
+        // 絶対 URL ( http(s):// ) のホスト検証
         if ( preg_match('/^https?:\/\//i', $url) === 1 ) {
             $configHost = parse_url($url, PHP_URL_HOST);
-            $requestHost = $_SERVER['HTTP_HOST'] ?? '';
-            if ( $configHost && $requestHost && strcasecmp($configHost, $requestHost) !== 0 ) {
-                error_log("[ConfigValidator] WARN: {$configKey} のホストがリクエストと異なります。"
-                    . "外部リダイレクト: config={$configHost}, request={$requestHost}");
+            if ( ! is_string($configHost) || $configHost === '' ) {
+                throw new ConfigException(
+                    "{$configKey} の URL からホストを解釈できません: '{$url}'"
+                );
             }
+            $configHostLower = strtolower($configHost);
+            $requestHost = strtolower((string) ( $_SERVER['HTTP_HOST'] ?? '' ));
+
+            // 同一ホストは OK
+            if ( $requestHost !== '' && $configHostLower === $requestHost ) {
+                return;
+            }
+            // 許可リストに含まれる外部ホストも OK
+            if ( in_array($configHostLower, $allowedHosts, true) ) {
+                return;
+            }
+            throw new ConfigException(
+                "{$configKey} のホスト '{$configHost}' は許可されていません。"
+                . " 外部リダイレクト先は allowed_redirect_hosts に明示してください: '{$url}'"
+            );
         }
     }
 
