@@ -102,17 +102,46 @@ class DraftSerializer {
     /**
      * Cookie 値の配列を連想配列にデシリアライズする。
      *
+     * 復号前に Cookie 個数と合計バイト数の上限を検証する ( メモリ DoS 対策 )。
+     * 上限を超えていたら base64_decode / 解凍に進まずに例外を投げる。
+     *
      * @param string[] $cookieValues Cookie 値の配列（添字は問わない、内部で並べ替え）
      * @param string $key 32 バイトの暗号化キー
+     * @param int $maxBytes Cookie 値の合計バイト数の上限 ( デフォルト無制限 )
+     * @param int $maxSplit Cookie 個数の上限 ( デフォルト無制限 )
      * @return array 元データ
-     * @throws DraftDecryptException 復号・パース失敗
+     * @throws DraftDecryptException 復号・パース失敗、または上限超過
      * @throws \InvalidArgumentException キー長違反
      */
-    public function unserialize( array $cookieValues, string $key ) : array {
+    public function unserialize(
+        array $cookieValues,
+        string $key,
+        int $maxBytes = PHP_INT_MAX,
+        int $maxSplit = PHP_INT_MAX,
+    ) : array {
         $this->assertKey($key);
 
         if ( empty($cookieValues) ) {
             throw new DraftDecryptException('No cookie values provided');
+        }
+
+        // 分割数の上限チェック
+        $count = count($cookieValues);
+        if ( $count > $maxSplit ) {
+            throw new DraftDecryptException(
+                "Too many chunks: {$count} > {$maxSplit} max",
+            );
+        }
+
+        // 合計バイト数の上限チェック ( base64 decode 前 / メモリ DoS 対策 )
+        $totalBytes = 0;
+        foreach ( $cookieValues as $v ) {
+            $totalBytes += strlen((string) $v);
+        }
+        if ( $totalBytes > $maxBytes ) {
+            throw new DraftDecryptException(
+                "Draft cookies too large: {$totalBytes} > {$maxBytes} bytes",
+            );
         }
 
         $chunks = [];

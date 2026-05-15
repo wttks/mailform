@@ -145,7 +145,12 @@ class DraftManager {
         }
 
         try {
-            return $this->serializer->unserialize($cookies, $this->key);
+            return $this->serializer->unserialize(
+                $cookies,
+                $this->key,
+                (int) ( $this->config['max_bytes'] ?? self::DEFAULT_MAX_BYTES ),
+                (int) ( $this->config['split'] ?? self::DEFAULT_SPLIT ),
+            );
         } catch ( DraftDecryptException $e ) {
             $this->clearDraftCookies();
             return [];

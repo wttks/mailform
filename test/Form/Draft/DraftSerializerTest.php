@@ -164,6 +164,36 @@ class DraftSerializerTest extends TestCase {
     }
 
 
+    public function test_復元時_合計バイト数上限を超えたら例外() {
+        // serialize は通常 max_bytes チェックがあるが、外部から大きな Cookie を
+        // 投げ込まれたケースを想定 ( 攻撃者が任意の Cookie ヘッダで送信 )
+        $bigChunk = 'v1.-.0.1.' . str_repeat('A', 8000);
+        $this->expectException(DraftDecryptException::class);
+        $this->expectExceptionMessageMatches('/cookies too large/');
+        // base64_decode より前に弾かれることを期待
+        $this->serializer->unserialize([ $bigChunk ], $this->key, maxBytes: 4000, maxSplit: 5);
+    }
+
+
+    public function test_復元時_分割数上限を超えたら例外() {
+        $cookies = [];
+        for ( $i = 0; $i < 10; $i++ ) {
+            $cookies[] = "v1.-.{$i}.10.AAAA";
+        }
+        $this->expectException(DraftDecryptException::class);
+        $this->expectExceptionMessageMatches('/Too many chunks/');
+        $this->serializer->unserialize($cookies, $this->key, maxBytes: 100000, maxSplit: 5);
+    }
+
+
+    public function test_復元時_上限内なら正常動作() {
+        $data = [ 'name' => '田中' ];
+        $cookies = $this->serializer->serialize($data, $this->key, 512, 4096, 5);
+        $restored = $this->serializer->unserialize($cookies, $this->key, maxBytes: 4096, maxSplit: 5);
+        $this->assertSame($data, $restored);
+    }
+
+
     public function test_異なるバージョンのCookieは弾く() {
         $this->expectException(DraftDecryptException::class);
         $this->serializer->unserialize([ 'v2.-.0.1.aaaa' ], $this->key);
