@@ -35,19 +35,22 @@ class MailAddress {
 
 
     /**
-     * CRLF / NULL バイト等の制御文字が含まれないか検証する。
+     * ASCII 制御文字 (NUL〜US, \x00-\x1f) が含まれないか検証する。
      *
-     * メールヘッダインジェクション対策: 攻撃者が `to` や `name` に
+     * メールヘッダインジェクション対策: 攻撃者が `to` / `name` / `subject` に
      * "\r\nBcc: attacker@evil.com" を注入して他人への送信を試みるのを
-     * 前段で阻止する。PHPMailer 側でも検出するが、ここで早期に明確な
-     * エラーで弾く（より分かりやすいメッセージで）。
+     * 前段で阻止する。CRLF (\r\n) と NUL (\x00) 以外にも、VT (\x0b) /
+     * FF (\x0c) などの制御文字を含めて一律に弾く（メアド・名前・件名の
+     * いずれにも正当な用途は無いため、防御深化として有効）。
+     *
+     * 日本語の表示名は UTF-8 で 0x80 以上のバイトになるためこの検査の影響は受けない。
      *
      * @throws SendMailException
      */
     public static function assertNoControlChars( string $value, string $fieldLabel = '値' ) : void {
-        if ( preg_match('/[\\x00\\r\\n]/', $value) === 1 ) {
+        if ( preg_match('/[\\x00-\\x1f]/', $value) === 1 ) {
             throw new SendMailException(
-                "{$fieldLabel}に制御文字 (改行・NULL) が含まれています。"
+                "{$fieldLabel}に制御文字が含まれています。"
             );
         }
     }
