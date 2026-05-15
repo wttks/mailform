@@ -31,6 +31,74 @@ class ConfigValidator {
         self::validateSender($config);
         self::validateDevBypass($config);
         self::validateLang($config);
+        self::validateHttp($config);
+    }
+
+
+    /**
+     * http セクションの検証（trust_forwarded_for / trusted_proxies）。
+     *
+     * - trust_forwarded_for: bool（true がデフォルト）
+     * - trusted_proxies: 文字列の配列で、各要素は単一 IP または CIDR
+     *
+     * X-Forwarded-* ヘッダ偽装によるレート制限迂回を防ぐための信頼プロキシ判定。
+     */
+    private static function validateHttp( array $config ) : void {
+        if ( ! isset($config['http']) ) {
+            return;
+        }
+        $http = $config['http'];
+        if ( ! is_array($http) ) {
+            throw new ConfigException("http は配列である必要があります。");
+        }
+
+        if ( isset($http['trust_forwarded_for']) && ! is_bool($http['trust_forwarded_for']) ) {
+            throw new ConfigException("http.trust_forwarded_for は bool である必要があります。");
+        }
+
+        if ( ! isset($http['trusted_proxies']) ) {
+            return;
+        }
+        $proxies = $http['trusted_proxies'];
+        if ( ! is_array($proxies) ) {
+            throw new ConfigException("http.trusted_proxies は配列である必要があります。");
+        }
+        foreach ( $proxies as $i => $entry ) {
+            if ( ! is_string($entry) || $entry === '' ) {
+                throw new ConfigException(
+                    "http.trusted_proxies[{$i}] は非空の文字列（IP または CIDR）である必要があります。"
+                );
+            }
+            self::assertValidIpOrCidr($entry, "http.trusted_proxies[{$i}]");
+        }
+    }
+
+
+    /**
+     * 単一 IP または CIDR の文字列として妥当か検証する。
+     */
+    private static function assertValidIpOrCidr( string $value, string $configKey ) : void {
+        if ( str_contains($value, '/') ) {
+            [ $subnet, $bits ] = explode('/', $value, 2);
+            if ( ! ctype_digit($bits) ) {
+                throw new ConfigException("{$configKey} の CIDR ビット長が不正です: '{$value}'");
+            }
+            if ( @inet_pton($subnet) === false ) {
+                throw new ConfigException("{$configKey} の IP 部分が不正です: '{$value}'");
+            }
+            $bitsInt = (int) $bits;
+            $isIpv6 = str_contains($subnet, ':');
+            $maxBits = $isIpv6 ? 128 : 32;
+            if ( $bitsInt < 0 || $bitsInt > $maxBits ) {
+                throw new ConfigException(
+                    "{$configKey} の CIDR ビット長は 0〜{$maxBits} の範囲である必要があります: '{$value}'"
+                );
+            }
+            return;
+        }
+        if ( @inet_pton($value) === false ) {
+            throw new ConfigException("{$configKey} は IP アドレスまたは CIDR である必要があります: '{$value}'");
+        }
     }
 
 

@@ -877,4 +877,97 @@ class ConfigValidatorTest extends TestCase {
         }
         $this->assertTrue(true);
     }
+
+
+    // ---- http ----
+
+    public function test_http_未設定でもOK() : void {
+        ConfigValidator::validate($this->validBase());
+        $this->assertTrue(true);
+    }
+
+
+    public function test_http_配列以外で例外() : void {
+        $this->expectException(ConfigException::class);
+        $this->expectExceptionMessage('http は配列');
+        ConfigValidator::validate($this->validBase() + [ 'http' => 'string' ]);
+    }
+
+
+    public function test_http_trust_forwarded_for_bool以外で例外() : void {
+        $this->expectException(ConfigException::class);
+        $this->expectExceptionMessage('http.trust_forwarded_for は bool');
+        ConfigValidator::validate($this->validBase() + [
+            'http' => [ 'trust_forwarded_for' => 'true' ],
+        ]);
+    }
+
+
+    public function test_http_trusted_proxies_配列以外で例外() : void {
+        $this->expectException(ConfigException::class);
+        $this->expectExceptionMessage('http.trusted_proxies は配列');
+        ConfigValidator::validate($this->validBase() + [
+            'http' => [ 'trusted_proxies' => '127.0.0.1' ],
+        ]);
+    }
+
+
+    public function test_http_trusted_proxies_要素が空文字で例外() : void {
+        $this->expectException(ConfigException::class);
+        $this->expectExceptionMessage('http.trusted_proxies[0]');
+        ConfigValidator::validate($this->validBase() + [
+            'http' => [ 'trusted_proxies' => [ '' ] ],
+        ]);
+    }
+
+
+    public function test_http_trusted_proxies_不正なIPで例外() : void {
+        $this->expectException(ConfigException::class);
+        ConfigValidator::validate($this->validBase() + [
+            'http' => [ 'trusted_proxies' => [ 'not-an-ip' ] ],
+        ]);
+    }
+
+
+    public function test_http_trusted_proxies_CIDRビット長文字で例外() : void {
+        $this->expectException(ConfigException::class);
+        $this->expectExceptionMessage('CIDR ビット長');
+        ConfigValidator::validate($this->validBase() + [
+            'http' => [ 'trusted_proxies' => [ '172.20.0.0/abc' ] ],
+        ]);
+    }
+
+
+    public function test_http_trusted_proxies_CIDRビット長範囲外で例外() : void {
+        $this->expectException(ConfigException::class);
+        $this->expectExceptionMessage('CIDR ビット長は');
+        ConfigValidator::validate($this->validBase() + [
+            'http' => [ 'trusted_proxies' => [ '172.20.0.0/33' ] ],
+        ]);
+    }
+
+
+    public function test_http_trusted_proxies_IPv4_IPv6_CIDR混在もOK() : void {
+        ConfigValidator::validate($this->validBase() + [
+            'http' => [
+                'trust_forwarded_for' => true,
+                'trusted_proxies' => [
+                    '127.0.0.1',
+                    '172.20.0.0/16',
+                    '::1',
+                    'fd00::/8',
+                    '2001:db8::/32',
+                ],
+            ],
+        ]);
+        $this->assertTrue(true);
+    }
+
+
+    public function test_http_trust_forwarded_for_false_proxies空_でもOK() : void {
+        ConfigValidator::validate($this->validBase() + [
+            'http' => [ 'trust_forwarded_for' => false ],
+        ]);
+        $this->assertTrue(true);
+    }
 }
