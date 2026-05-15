@@ -64,7 +64,7 @@ class RateLimitTest extends TestCase {
         $this->assertTrue(RateLimit::check('submit'));
         $this->assertTrue(RateLimit::check('submit'));
         $this->assertTrue(RateLimit::check('submit'));
-        $this->assertSame(3, $this->store->countWithin('submit:ip:203.0.113.1', 60));
+        $this->assertSame(3, $this->store->countWithin('submit:ip:w60:203.0.113.1', 60));
     }
 
     public function test_check_上限超過なら_false_かつ_カウント増加しない(): void {
@@ -74,7 +74,7 @@ class RateLimitTest extends TestCase {
         $this->assertTrue(RateLimit::check('submit'));
         $this->assertFalse(RateLimit::check('submit'));
         // 上限を超えたら新規記録はしない
-        $this->assertSame(2, $this->store->countWithin('submit:ip:203.0.113.1', 60));
+        $this->assertSame(2, $this->store->countWithin('submit:ip:w60:203.0.113.1', 60));
     }
 
     // ---- 設定無効 ----
@@ -85,7 +85,7 @@ class RateLimitTest extends TestCase {
 
         $this->assertTrue(RateLimit::check('submit'));
         $this->assertTrue(RateLimit::check('submit'));
-        $this->assertSame(0, $this->store->countWithin('submit:ip:203.0.113.1', 60));
+        $this->assertSame(0, $this->store->countWithin('submit:ip:w60:203.0.113.1', 60));
     }
 
     public function test_enabled_false_なら_常に_true(): void {
@@ -117,7 +117,7 @@ class RateLimitTest extends TestCase {
         $this->assertTrue(RateLimit::check('submit', $data));
         $this->assertTrue(RateLimit::check('submit', $data));
         // バイパス時はカウンタを増やさない
-        $this->assertSame(0, $this->store->countWithin('submit:ip:203.0.113.1', 60));
+        $this->assertSame(0, $this->store->countWithin('submit:ip:w60:203.0.113.1', 60));
     }
 
     public function test_dev_bypass_不一致なら通常評価(): void {
@@ -146,17 +146,38 @@ class RateLimitTest extends TestCase {
 
         $this->assertTrue(RateLimit::check('submit'));
         $this->assertTrue(RateLimit::check('submit'));
-        $this->assertSame(0, $this->store->countWithin('submit:ip:203.0.113.1', 60));
+        $this->assertSame(0, $this->store->countWithin('submit:ip:w60:203.0.113.1', 60));
     }
 
     // ---- X-Forwarded-For ----
 
-    public function test_X_Forwarded_For_の先頭IP_を採用(): void {
+    public function test_TrustedProxy未設定_XFFは無視されREMOTE_ADDRでカウント(): void {
+        // TrustedProxy が configure されていない / trusted_proxies が空の状態では
+        // XFF を信用しないので REMOTE_ADDR ( = 203.0.113.1 ) でカウントされる
         $_SERVER['HTTP_X_FORWARDED_FOR'] = '198.51.100.1, 172.20.0.3';
         $this->configure([['key' => 'ip', 'limit' => 5, 'window' => 60]]);
 
         RateLimit::check('submit');
-        $this->assertSame(1, $this->store->countWithin('submit:ip:198.51.100.1', 60));
+        $this->assertSame(1, $this->store->countWithin('submit:ip:w60:203.0.113.1', 60));
+        $this->assertSame(0, $this->store->countWithin('submit:ip:w60:198.51.100.1', 60));
+    }
+
+
+    public function test_TrustedProxy設定済み_XFFから真クライアントIPでカウント(): void {
+        // プロキシ越し配置 ( trusted_proxies 設定済み + REMOTE_ADDR が trusted ) では
+        // XFF を辿って真クライアント IP でカウントされる
+        $_SERVER['REMOTE_ADDR'] = '172.20.0.3';
+        $_SERVER['HTTP_X_FORWARDED_FOR'] = '198.51.100.1, 172.20.0.10';
+        \AIJOH\Http\TrustedProxy::configure([
+            'trust_forwarded_for' => true,
+            'trusted_proxies'     => [ '172.20.0.0/16' ],
+        ]);
+        $this->configure([['key' => 'ip', 'limit' => 5, 'window' => 60]]);
+
+        RateLimit::check('submit');
+        $this->assertSame(1, $this->store->countWithin('submit:ip:w60:198.51.100.1', 60));
+
+        \AIJOH\Http\TrustedProxy::reset();
     }
 
     // ---- 複数ルール ----

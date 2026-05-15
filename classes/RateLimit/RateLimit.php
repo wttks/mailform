@@ -106,23 +106,24 @@ class RateLimit {
         }
 
         $sessionId = self::getSessionId();
-        $keys = [];
+
+        // 各ルールについて checkAndRecord で「件数判定 + 記録」をアトミックに行う。
+        // 旧 API ( countWithin + record ) は TOCTOU 競合があり、並列リクエストで
+        // 上限を超過する。FileStore は flock 範囲で atomic 化された実装を提供する。
+        //
+        // ルール毎の key には window 秒数を含めて独立カウンタにする ( 同じ keyType
+        // でも window が違えば別カウンタ )。これにより 1 つの rule の record が
+        // 他の rule のカウンタに影響しないため、複数 rule の atomic 評価が
+        // 単純な「rule 毎の checkAndRecord」の繰返しで正しく動く。
         foreach ( $rules as $ruleConfig ) {
             $rule = RateLimitRule::fromConfig($ruleConfig);
-            $key = self::buildKey($endpointName, $rule->keyType, $ip, $sessionId);
+            $key = self::buildKey($endpointName, $rule->keyType, $rule->windowSec, $ip, $sessionId);
             if ( $key === null ) {
                 continue;
             }
-            $count = $store->countWithin($key, $rule->windowSec);
-            if ( $count >= $rule->limit ) {
-                return false;  // 超過
+            if ( ! $store->checkAndRecord($key, $rule->windowSec, $rule->limit) ) {
+                return false;
             }
-            $keys[] = $key;
-        }
-
-        // すべてのルールを通過したら現在のリクエストを記録する
-        foreach ( array_unique($keys) as $key ) {
-            $store->record($key);
         }
         return true;
     }
@@ -154,9 +155,12 @@ class RateLimit {
 
 
     /**
-     * カウント記録キーを生成する（エンドポイント・ルール種別・値の組み合わせ）。
+     * カウント記録キーを生成する（エンドポイント・ルール種別・window 秒数・値の組み合わせ）。
+     *
+     * window 秒数をキーに含めることで、同じ keyType でも window が違えば別カウンタになる。
+     * これにより複数ルールの atomic 評価がルール毎の独立 checkAndRecord で正しく動く。
      */
-    private static function buildKey( string $endpointName, string $keyType, string $ip, ?string $sessionId ) : ?string {
+    private static function buildKey( string $endpointName, string $keyType, int $windowSec, string $ip, ?string $sessionId ) : ?string {
         $value = match ( $keyType ) {
             'ip'      => $ip,
             'session' => $sessionId,
@@ -165,7 +169,7 @@ class RateLimit {
         if ( $value === null || $value === '' ) {
             return null;
         }
-        return $endpointName . ':' . $keyType . ':' . $value;
+        return $endpointName . ':' . $keyType . ':w' . $windowSec . ':' . $value;
     }
 
 
