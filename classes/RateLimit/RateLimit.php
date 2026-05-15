@@ -5,6 +5,7 @@ namespace AIJOH\RateLimit;
 use AIJOH\Http\DevBypass;
 use AIJOH\Http\Response;
 use AIJOH\Http\Session;
+use AIJOH\Http\TrustedProxy;
 
 /**
  * レート制限の入口。
@@ -182,17 +183,10 @@ class RateLimit {
 
 
     /**
-     * クライアント IP を返す。リバースプロキシ越しは X-Forwarded-For の先頭を採用する。
+     * クライアント IP を返す。信頼プロキシ判定は TrustedProxy に委譲。
      */
     private static function getClientIp() : string {
-        $forwarded = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? '';
-        if ( $forwarded !== '' ) {
-            $first = trim(explode(',', $forwarded)[0]);
-            if ( $first !== '' ) {
-                return $first;
-            }
-        }
-        return $_SERVER['REMOTE_ADDR'] ?? '';
+        return TrustedProxy::getClientIp();
     }
 
 

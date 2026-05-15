@@ -28,19 +28,10 @@ class Session {
 
     /**
      * 現在のリクエストが HTTPS か判定する。
-     * リバースプロキシ越しの場合は X-Forwarded-Proto を信頼する。
+     * リバースプロキシ越しの X-Forwarded-Proto 判定は TrustedProxy に委譲。
      */
     private static function isHttps() : bool {
-        if ( ! empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ) {
-            return true;
-        }
-        if ( ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https' ) {
-            return true;
-        }
-        if ( ($_SERVER['SERVER_PORT'] ?? '') === '443' ) {
-            return true;
-        }
-        return false;
+        return TrustedProxy::isHttps();
     }
 
 
