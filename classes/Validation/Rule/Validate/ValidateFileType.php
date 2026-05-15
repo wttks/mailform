@@ -4,6 +4,7 @@ namespace AIJOH\Validation\Rule\Validate;
 
 use AIJOH\Http\UploadFile;
 use AIJOH\Util\ArrayUtil;
+use AIJOH\Util\FileUtil;
 use AIJOH\Validation\Exception\ValidationRuleException;
 use AIJOH\Validation\Validator\Validator;
 
@@ -100,7 +101,16 @@ class ValidateFileType extends ValidateBase {
 
 
     /**
-     * アップロードファイルのMIMEタイプと拡張子を両方チェックする。
+     * アップロードファイルの拡張子・finfo MIME・magic bytes の 3 段検証を行う。
+     *
+     * 1. 実拡張子が許可リストにあるか ( 大小文字無視 )
+     * 2. 実 finfo MIME が許可リストの fnmatch パターンにマッチするか
+     * 3. 実ファイルの先頭バイトが実 MIME の signature と一致するか
+     *    ( tmp ファイルが存在し、signature テーブルに該当 MIME が定義されているとき )
+     *
+     * polyglot ( 例: 拡張子 .png で finfo MIME も image/png だが、実体は PHP / PDF )
+     * を 3 段目で検出する。
+     *
      * @param mixed $value
      * @param array|null $args エイリアス名の配列
      * @param string $name
@@ -130,8 +140,14 @@ class ValidateFileType extends ValidateBase {
             $acceptExtList  = array_merge($acceptExtList, self::$aliases[ $alias ]['ext']);
         }
 
-        // MIMEタイプチェック（ワイルドカード対応）
-        $mimeType  = $value->getMimeType();
+        // 1. 拡張子チェック ( 大小文字無視 )
+        $ext = strtolower($value->getExtension());
+        if ( ! in_array($ext, $acceptExtList, true) ) {
+            return false;
+        }
+
+        // 2. finfo MIME チェック ( ワイルドカード対応 )
+        $mimeType = $value->getMimeType();
         $mimeMatch = false;
         foreach ( $acceptMimeList as $acceptMime ) {
             if ( fnmatch($acceptMime, $mimeType) ) {
@@ -143,8 +159,12 @@ class ValidateFileType extends ValidateBase {
             return false;
         }
 
-        // 拡張子チェック（大文字小文字を区別しない）
-        $ext = strtolower($value->getExtension());
-        return in_array($ext, $acceptExtList, true);
+        // 3. magic bytes チェック ( 実 MIME に対する signature )
+        // tmp ファイルが既に無いケース ( 確認画面復元等 ) はスキップして拡張子 + MIME のみで判断
+        $tmpPath = $value->getTmpName();
+        if ( $tmpPath === '' || ! is_file($tmpPath) ) {
+            return true;
+        }
+        return FileUtil::matchesMagicBytes($tmpPath, $mimeType);
     }
 }

@@ -10,20 +10,46 @@ use PHPUnit\Framework\TestCase;
 class ValidateFileTypeTest extends TestCase {
 
     private ValidateFileType $rule;
+    /** @var string[] tearDown で消す一時ファイル */
+    private array $tmpFiles = [];
 
     protected function setUp() : void {
         $this->rule = new ValidateFileType();
     }
 
+    protected function tearDown() : void {
+        foreach ( $this->tmpFiles as $f ) { @unlink($f); }
+        $this->tmpFiles = [];
+    }
+
     /**
      * MIMEタイプと拡張子を持つ UploadFile モックを作成する。
      * exists() は true を返すようにしてバリデーションがスキップされないようにする。
+     * tmp ファイル無しのモックは magic bytes 検証をスキップして拡張子 + MIME で判断。
      */
     private function makeFile( string $mimeType, string $extension ) : UploadFile {
         $mock = $this->createStub(UploadFile::class);
         $mock->method('exists')->willReturn(true);
         $mock->method('getMimeType')->willReturn($mimeType);
         $mock->method('getExtension')->willReturn($extension);
+        $mock->method('getTmpName')->willReturn('');
+        return $mock;
+    }
+
+
+    /**
+     * 実ファイル付きの UploadFile モックを作成する ( 3 段検証用 )
+     */
+    private function makeRealFile( string $content, string $mimeType, string $extension ) : UploadFile {
+        $tmpPath = tempnam(sys_get_temp_dir(), 'mfu_ft_');
+        file_put_contents($tmpPath, $content);
+        $this->tmpFiles[] = $tmpPath;
+
+        $mock = $this->createStub(UploadFile::class);
+        $mock->method('exists')->willReturn(true);
+        $mock->method('getMimeType')->willReturn($mimeType);
+        $mock->method('getExtension')->willReturn($extension);
+        $mock->method('getTmpName')->willReturn($tmpPath);
         return $mock;
     }
 
@@ -194,5 +220,40 @@ class ValidateFileTypeTest extends TestCase {
         $this->assertArrayHasKey('types', $args);
         $this->assertStringContainsString('pdf', $args['types']);
         $this->assertStringContainsString('word', $args['types']);
+    }
+
+
+    // ==============================
+    // 3 段検証 ( magic bytes ) - polyglot 対策
+    // ==============================
+
+    public function test_実ファイル_PNG_は3段すべて通過() : void {
+        $pngContent = "\x89PNG\r\n\x1A\n" . str_repeat("\x00", 100);
+        $file = $this->makeRealFile($pngContent, 'image/png', 'png');
+        $this->assertTrue($this->rule->validate($file, ['image']));
+    }
+
+
+    public function test_polyglot_拡張子pngでfinfo_image_png_だが実体PDFは3段目で弾く() : void {
+        // 攻撃シナリオ: 拡張子 .png + finfo の戻りも image/png に擬装したが、
+        // 実体は PDF ヘッダで始まるファイル
+        $pdfContent = "%PDF-1.4\n" . str_repeat("x", 100);
+        $file = $this->makeRealFile($pdfContent, 'image/png', 'png');
+        $this->assertFalse($this->rule->validate($file, ['image']),
+            'polyglot は 3 段目の magic bytes 検証で弾かれること');
+    }
+
+
+    public function test_polyglot_拡張子pdfでfinfo_application_pdf_だが実体PNGも弾く() : void {
+        $pngContent = "\x89PNG\r\n\x1A\n" . str_repeat("\x00", 100);
+        $file = $this->makeRealFile($pngContent, 'application/pdf', 'pdf');
+        $this->assertFalse($this->rule->validate($file, ['pdf']));
+    }
+
+
+    public function test_tmpファイル無しは_拡張子_finfo_MIMEのみで判断() : void {
+        // 確認画面復元等で tmp が存在しないケースは従来通り 2 段検証
+        $file = $this->makeFile('image/png', 'png');
+        $this->assertTrue($this->rule->validate($file, ['image']));
     }
 }
