@@ -27,9 +27,9 @@ class TrustedProxyTest extends TestCase {
 
     // ---- getClientIp ----
 
-    public function test_configure未呼出は従来挙動_XFF先頭採用() : void {
+    public function test_configure未呼出は安全側_XFFを無視してREMOTE_ADDR() : void {
         $_SERVER['HTTP_X_FORWARDED_FOR'] = '198.51.100.1, 172.20.0.3';
-        $this->assertSame('198.51.100.1', TrustedProxy::getClientIp());
+        $this->assertSame('203.0.113.1', TrustedProxy::getClientIp());
     }
 
 
@@ -48,13 +48,13 @@ class TrustedProxyTest extends TestCase {
     }
 
 
-    public function test_trust_true_proxies空_は後方互換でXFF先頭採用() : void {
+    public function test_trust_true_proxies空_は安全側でXFF無視() : void {
         TrustedProxy::configure([
             'trust_forwarded_for' => true,
             'trusted_proxies' => [],
         ]);
         $_SERVER['HTTP_X_FORWARDED_FOR'] = '198.51.100.1, 172.20.0.3';
-        $this->assertSame('198.51.100.1', TrustedProxy::getClientIp());
+        $this->assertSame('203.0.113.1', TrustedProxy::getClientIp());
     }
 
 
@@ -160,9 +160,9 @@ class TrustedProxyTest extends TestCase {
     }
 
 
-    public function test_isHttps_configure未呼出_XFP_httpsを信頼() : void {
+    public function test_isHttps_configure未呼出は安全側_XFPを無視() : void {
         $_SERVER['HTTP_X_FORWARDED_PROTO'] = 'https';
-        $this->assertTrue(TrustedProxy::isHttps());
+        $this->assertFalse(TrustedProxy::isHttps());
     }
 
 
@@ -176,13 +176,13 @@ class TrustedProxyTest extends TestCase {
     }
 
 
-    public function test_isHttps_trust_true_proxies空_は後方互換でXFP信頼() : void {
+    public function test_isHttps_trust_true_proxies空_は安全側でXFP無視() : void {
         $_SERVER['HTTP_X_FORWARDED_PROTO'] = 'https';
         TrustedProxy::configure([
             'trust_forwarded_for' => true,
             'trusted_proxies' => [],
         ]);
-        $this->assertTrue(TrustedProxy::isHttps());
+        $this->assertFalse(TrustedProxy::isHttps());
     }
 
 

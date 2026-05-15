@@ -16,13 +16,12 @@ namespace AIJOH\Http;
  *       ],
  *   ]
  *
- * デフォルトは `trust_forwarded_for=true` / `trusted_proxies=[]`（後方互換）。
- * 空のとき configure() 時点で WARN ログを出して、設置者に「ヘッダ偽装で
- * IP 単位のレート制限カウンタが分散される」リスクを通知する。
+ * デフォルトは `trust_forwarded_for=false`（安全側）。プロキシ越し配置のときだけ
+ * 明示的に true にし、trusted_proxies にプロキシ IP / CIDR を設定する必要がある。
  *
  * 解析ロジック:
  * - trust_forwarded_for=false → 常に REMOTE_ADDR
- * - trust_forwarded_for=true + trusted_proxies 空 → 後方互換で X-Forwarded-For 先頭採用
+ * - trust_forwarded_for=true + trusted_proxies 空 → WARN ログを出し、安全側で REMOTE_ADDR
  * - trust_forwarded_for=true + trusted_proxies 設定済み →
  *     REMOTE_ADDR が trusted なときだけ、X-Forwarded-For を後ろから辿り
  *     最初の「非 trusted」IP（= 真クライアント IP）を返す
@@ -36,21 +35,20 @@ class TrustedProxy {
 
     /**
      * 'http' セクションの設定を登録する。
-     * trust_forwarded_for=true で trusted_proxies が空のときは起動時 1 回 WARN を出す。
+     * trust_forwarded_for=true で trusted_proxies が空のときは起動時 1 回 WARN を出し、
+     * 実行時は安全側で X-Forwarded-* を信用しない ( REMOTE_ADDR を使う )。
      */
     public static function configure( array $config ) : void {
         self::$config = $config;
         self::$configured = true;
 
-        $trust = (bool) ( $config['trust_forwarded_for'] ?? true );
+        $trust = (bool) ( $config['trust_forwarded_for'] ?? false );
         $proxies = (array) ( $config['trusted_proxies'] ?? [] );
         if ( $trust && empty($proxies) ) {
             error_log(
                 "[mailform] WARN: http.trust_forwarded_for=true ですが http.trusted_proxies が空です。"
-                . " X-Forwarded-For ヘッダを偽装されると IP 単位のレート制限カウンタが分散され、"
-                . " 事実上の迂回が可能になります。プロキシ越し配置の場合は trusted_proxies に"
-                . " プロキシ IP / CIDR を設定してください。直公開（プロキシなし）の場合は"
-                . " trust_forwarded_for=false にしてください。"
+                . " 空の場合は X-Forwarded-* を無視し REMOTE_ADDR を使います。"
+                . " プロキシ越し配置の場合は trusted_proxies にプロキシ IP / CIDR を設定してください。"
             );
         }
     }
@@ -67,7 +65,9 @@ class TrustedProxy {
 
     /**
      * クライアント IP を取得する。
-     * 設定が未登録の場合は後方互換挙動（X-Forwarded-For 先頭採用 / 無ければ REMOTE_ADDR）。
+     * デフォルト ( configure 未呼出 / trust_forwarded_for=false ) は REMOTE_ADDR。
+     * X-Forwarded-* を信用するには trust_forwarded_for=true と trusted_proxies の
+     * 設定の両方が必要 ( どちらが欠けても REMOTE_ADDR )。
      */
     public static function getClientIp() : string {
         $remote = (string) ( $_SERVER['REMOTE_ADDR'] ?? '' );
@@ -76,15 +76,16 @@ class TrustedProxy {
             return $remote;
         }
 
-        $forwarded = self::parseForwardedFor();
-        if ( empty($forwarded) ) {
+        $proxies = self::trustedProxies();
+        if ( empty($proxies) ) {
+            // 安全側: trusted_proxies 未設定なら XFF を信用しない
+            // ( configure() で WARN ログ済 )
             return $remote;
         }
 
-        $proxies = self::trustedProxies();
-        if ( empty($proxies) ) {
-            // 後方互換: trusted_proxies 未設定なら従来通り先頭採用
-            return $forwarded[0];
+        $forwarded = self::parseForwardedFor();
+        if ( empty($forwarded) ) {
+            return $remote;
         }
 
         // REMOTE_ADDR が trusted でなければ X-Forwarded-* は信用しない
@@ -107,8 +108,8 @@ class TrustedProxy {
 
     /**
      * 現在のリクエストが HTTPS か判定する。
-     * trust_forwarded_for=true かつ REMOTE_ADDR が trusted なら X-Forwarded-Proto を信頼。
-     * trusted_proxies 未設定なら後方互換で X-Forwarded-Proto を信頼。
+     * X-Forwarded-Proto を信頼するには trust_forwarded_for=true かつ
+     * trusted_proxies が設定済みかつ REMOTE_ADDR が trusted である必要がある。
      */
     public static function isHttps() : bool {
         if ( ! empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ) {
@@ -129,8 +130,8 @@ class TrustedProxy {
 
         $proxies = self::trustedProxies();
         if ( empty($proxies) ) {
-            // 後方互換
-            return strtolower($forwardedProto) === 'https';
+            // 安全側: trusted_proxies 未設定なら XFP を信用しない
+            return false;
         }
 
         $remote = (string) ( $_SERVER['REMOTE_ADDR'] ?? '' );
@@ -249,10 +250,10 @@ class TrustedProxy {
 
     private static function trustForwarded() : bool {
         if ( ! self::$configured ) {
-            // configure 未呼び出しなら従来挙動（信頼する）
-            return true;
+            // configure 未呼び出しなら安全側 ( 信用しない )
+            return false;
         }
-        return (bool) ( self::$config['trust_forwarded_for'] ?? true );
+        return (bool) ( self::$config['trust_forwarded_for'] ?? false );
     }
 
 

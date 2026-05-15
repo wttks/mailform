@@ -38,10 +38,12 @@ class ConfigValidator {
     /**
      * http セクションの検証（trust_forwarded_for / trusted_proxies）。
      *
-     * - trust_forwarded_for: bool（true がデフォルト）
+     * - trust_forwarded_for: bool（安全側で false がデフォルト）
      * - trusted_proxies: 文字列の配列で、各要素は単一 IP または CIDR
      *
      * X-Forwarded-* ヘッダ偽装によるレート制限迂回を防ぐための信頼プロキシ判定。
+     * trust_forwarded_for=true でも trusted_proxies が空のときは XFF / XFP を
+     * 信用せず REMOTE_ADDR を使う。
      */
     private static function validateHttp( array $config ) : void {
         if ( ! isset($config['http']) ) {
