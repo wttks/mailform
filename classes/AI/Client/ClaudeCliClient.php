@@ -129,20 +129,18 @@ class ClaudeCliClient extends AIClient {
 
     /**
      * 文字列から JSON を取り出す。
-     * ```json``` コードブロックとプレーン JSON のみ受け付ける。
-     *
-     * 「最初の `{` 〜 最後の `}`」を切り出すフォールバックは廃止 ( セキュリティ強化 )。
-     * 詳細は HttpAIClient::extractJsonObject() の注釈を参照。
+     * 受け付けるのは「全体がコードブロック」「全体がプレーン JSON」のみ。
+     * 説明文混在応答は採用しない ( 詳細は HttpAIClient::extractJsonObject() の注釈 )。
      */
     private function buildResponse( string $text, bool $jsonMode ) : AIResponse {
         $jsonData = null;
         if ( $jsonMode ) {
-            // ```json``` 抽出
-            if ( preg_match('/```(?:json)?\s*(\{.*?\})\s*```/s', $text, $m) ) {
+            // 全体が ```json``` コードブロック ( 前後空白のみ可 )
+            if ( preg_match('/\A\s*```(?:json)?\s*(\{.*?\})\s*```\s*\z/s', $text, $m) ) {
                 $decoded = json_decode($m[1], true);
                 if ( is_array($decoded) ) $jsonData = $decoded;
             }
-            // プレーン JSON
+            // 全体がプレーン JSON
             if ( $jsonData === null ) {
                 $decoded = json_decode($text, true);
                 if ( is_array($decoded) ) {

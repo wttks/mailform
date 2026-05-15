@@ -89,20 +89,21 @@ abstract class HttpAIClient extends AIClient {
 
     /**
      * 文字列から JSON オブジェクト部分を抽出して連想配列で返す。
-     * 「```json ... ```」コードブロック表記とプレーン JSON のみ受け付ける。
+     * 受け付けるのは以下のいずれかの形式のみ:
+     *   1. 全体が「```json ... ```」または「``` ... ```」コードブロック ( 前後空白のみ可 )
+     *   2. 全体がプレーン JSON ( 前後空白のみ可 )
      *
-     * 「最初の `{` 〜 最後の `}`」を切り出すフォールバックは廃止 ( セキュリティ強化 )。
-     * モデル出力が説明文を含むと、攻撃文面に埋め込まれた `{...}` を意図せず採用して
-     * しまう可能性があるため。jsonMode のときはモデルに「JSON のみ返す」よう指示する
-     * 前提で、その契約から外れた応答は decode 失敗として扱う ( = null )。
+     * 「説明文 + 中に { ... }」「説明文 + 中に code fence」のような混在応答は
+     * 採用しない ( プロンプトインジェクション対策 )。jsonMode のとき、モデルに
+     * 「JSON のみ返す」よう指示する前提で、契約違反の応答は decode 失敗扱い ( null )。
      */
     private function extractJsonObject( string $text ) : ?array {
-        // ```json ... ``` を抜き出す
-        if ( preg_match('/```(?:json)?\s*(\{.*?\})\s*```/s', $text, $m) ) {
+        // 全体が ```json ... ``` ( 前後空白のみ可 )
+        if ( preg_match('/\A\s*```(?:json)?\s*(\{.*?\})\s*```\s*\z/s', $text, $m) ) {
             $decoded = json_decode($m[1], true);
             if ( is_array($decoded) ) return $decoded;
         }
-        // プレーン JSON
+        // 全体がプレーン JSON
         $trimmed = trim($text);
         $decoded = json_decode($trimmed, true);
         if ( is_array($decoded) ) return $decoded;
