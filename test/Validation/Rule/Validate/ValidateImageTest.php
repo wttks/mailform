@@ -8,8 +8,12 @@ use PHPUnit\Framework\TestCase;
 
 /**
  * ValidateImage のテスト
- * UploadFile 以外の値は常に true（check でそのように実装されている）
- * UploadFile の場合は getMimeType() が "image/" で始まる場合のみ true
+ *
+ * 期待挙動:
+ * - 空値 / null / 未アップロードの UploadFile → true（ValidateBase で吸収）
+ * - UploadFile で getMimeType() が "image/" で始まる → true
+ * - UploadFile で非画像 MIME → false
+ * - UploadFile 以外の値（文字列・整数等）→ false（不正値として拒否）
  */
 class ValidateImageTest extends TestCase {
 
@@ -56,15 +60,19 @@ class ValidateImageTest extends TestCase {
         $this->assertFalse($this->rule->validate($file));
     }
 
-    // ---- UploadFile 以外は常に true ----
+    // ---- UploadFile 以外の非空値は不正として false ----
 
-    public function test_文字列はtrueを返す(): void {
-        // check() で UploadFile でなければ true を返す
-        $this->assertTrue($this->rule->validate('some_value'));
+    public function test_文字列はfalseを返す(): void {
+        // UploadFile じゃない非空値は不正としてエラー
+        $this->assertFalse($this->rule->validate('some_value'));
     }
 
-    public function test_整数はtrueを返す(): void {
-        $this->assertTrue($this->rule->validate(123));
+    public function test_整数はfalseを返す(): void {
+        $this->assertFalse($this->rule->validate(123));
+    }
+
+    public function test_配列はfalseを返す(): void {
+        $this->assertFalse($this->rule->validate([ 'foo' => 'bar' ]));
     }
 
     // ---- 空値スキップ ----
