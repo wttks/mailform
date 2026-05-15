@@ -223,8 +223,13 @@ class FormSession {
 
     /**
      * このセッション専用のアップロード一時ディレクトリを取得（無ければ作成）。
+     *
+     * mkdir 失敗時は error_log で原因を出し、ディレクトリを作れなかった事実が
+     * 後段の move() 失敗まで silent に伝播しないようにする。呼び出し側 ( move )
+     * は失敗時に「表示用メタのみ」で進行する仕様で、確認画面に進めた後の送信時
+     * に添付が見つからずエラー化するため、ここで明示的に問題を可視化する。
      */
-    private function getOrCreateUploadDir() : string {
+    protected function getOrCreateUploadDir() : string {
         $token = $this->session->get(self::KEY_UPLOAD_TOKEN);
         if ( ! is_string($token) || $token === '' ) {
             $token = bin2hex(random_bytes(16));
@@ -232,7 +237,14 @@ class FormSession {
         }
         $dir = sys_get_temp_dir() . '/' . self::UPLOAD_DIR_PREFIX . '/' . $token;
         if ( ! is_dir($dir) ) {
-            mkdir($dir, 0700, true);
+            // 戻り値 + is_dir で再判定 ( 同時アクセスで他プロセスが既に作っているケースも許容 )
+            if ( ! @mkdir($dir, 0700, true) && ! is_dir($dir) ) {
+                $err = error_get_last();
+                error_log(
+                    "[FormSession] failed to create upload dir '{$dir}': "
+                    . ( $err['message'] ?? 'unknown error' )
+                );
+            }
         }
         return $dir;
     }

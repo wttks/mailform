@@ -583,13 +583,20 @@ class ConfigValidator {
             if ( ! is_array($draft['cookie']) ) {
                 throw new ConfigException("draft.cookie は配列である必要があります。");
             }
-            $path = $draft['cookie']['path'] ?? '/';
-            if ( $path === '/' ) {
-                error_log(
-                    "[mailform] WARN: draft.cookie.path が '/' のため、draft Cookie が全エンドポイントに送信されます。"
-                    . "/<form-path>/ に絞ることを推奨します。"
-                );
-            }
+        }
+        // path 未指定 / '/' は warning ( draft Cookie が全エンドポイントに送信されると
+        // 帯域 / ログ露出 / 他フォームへの干渉のリスクが上がる )
+        $cookiePath = $draft['cookie']['path'] ?? null;
+        if ( $cookiePath === null ) {
+            error_log(
+                "[mailform] WARN: draft.cookie.path が未指定のため、draft Cookie の path は '/' になり"
+                . " 全エンドポイントに送信されます。フォーム配下のパス ( 例: '/contact/' ) を明示することを強く推奨します。"
+            );
+        } elseif ( $cookiePath === '/' ) {
+            error_log(
+                "[mailform] WARN: draft.cookie.path = '/' は draft Cookie を全エンドポイントに送信します。"
+                . " フォーム配下のパス ( 例: '/contact/' ) に絞ることを強く推奨します ( 帯域 / ログ露出 / 他フォーム干渉のリスク )。"
+            );
         }
 
         // consent セクション

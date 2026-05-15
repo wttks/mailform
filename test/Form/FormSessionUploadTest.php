@@ -51,6 +51,53 @@ class FormSessionUploadTest extends TestCase {
     }
 
 
+    public function test_mkdir失敗時_errorlogに原因が記録される(): void {
+        // 公開可能なテスト用サブクラスで getOrCreateUploadDir に到達する
+        $session = new class extends FormSession {
+            public function callGetOrCreateUploadDir() : string {
+                return $this->getOrCreateUploadDir();
+            }
+        };
+
+        // Session 初期化後に token を固定 ( FormSession コンストラクタ後にセットしないと
+        // 上書きされる可能性がある )
+        $token = 'collision-token-' . bin2hex(random_bytes(4));
+        $_SESSION['_form_upload_token'] = $token;
+
+        // 同名のファイルを事前作成して mkdir を失敗させる
+        if ( ! is_dir($this->tmpUploadBase) ) {
+            mkdir($this->tmpUploadBase, 0700, true);
+        }
+        $conflictPath = $this->tmpUploadBase . '/' . $token;
+        @unlink($conflictPath);
+        file_put_contents($conflictPath, 'I am a file, not a dir');
+
+        // error_log を一時ファイルに切替
+        $logFile = tempnam(sys_get_temp_dir(), 'mfsess_');
+        $originalLog = ini_get('error_log');
+        ini_set('error_log', $logFile);
+
+        try {
+            $result = $session->callGetOrCreateUploadDir();
+            // ディレクトリは作れていない ( ファイルが居座っている )
+            $this->assertFalse(is_dir($conflictPath));
+            // パス文字列自体は返る ( 後続の move() で失敗するという既存挙動 )
+            $this->assertSame($conflictPath, $result);
+
+            $log = (string) file_get_contents($logFile);
+            $this->assertStringContainsString(
+                'failed to create upload dir',
+                $log,
+                'mkdir 失敗時に error_log で原因が出ること'
+            );
+        } finally {
+            ini_set('error_log', $originalLog);
+            @unlink($logFile);
+            @unlink($conflictPath);
+        }
+    }
+
+
     public function test_save_と_restore_の往復で_UploadFile_が復元される(): void {
         $upload = $this->buildFakeUpload('document', 'sample.pdf', 'PDF DATA', 'application/pdf');
         $formData = new FormData();

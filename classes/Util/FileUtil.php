@@ -69,21 +69,32 @@ class FileUtil {
 
     /**
      * ファイルの実 MIME を finfo で取得する（mime_content_type の代替）。
+     *
+     * PHP 8.5+ は finfo リソースが自動解放されるが、PHP 8.3 / 8.4 では
+     * 明示的に finfo_close を呼ばないと長寿命プロセス・大量検証時に
+     * リソースリークの懸念があるため、ここで close する。
+     *
      * @return string MIME 文字列、取得失敗時は空文字列
      */
     public static function getMimeType( string $path ) : string {
         if ( ! is_file($path) ) {
             return '';
         }
-        // PHP 8.5+ では finfo オブジェクトは自動解放される。finfo_close は不要。
         $finfo = @finfo_open(FILEINFO_MIME_TYPE);
         if ( $finfo === false ) {
             // finfo 利用不可の環境では mime_content_type にフォールバック
             $type = @mime_content_type($path);
             return is_string($type) ? $type : '';
         }
-        $type = @finfo_file($finfo, $path);
-        return is_string($type) ? $type : '';
+        try {
+            $type = @finfo_file($finfo, $path);
+            return is_string($type) ? $type : '';
+        } finally {
+            // PHP 8.5+ では finfo オブジェクトとして自動解放されるが、互換のため明示
+            if ( is_resource($finfo) || $finfo instanceof \finfo ) {
+                @finfo_close($finfo);
+            }
+        }
     }
 
 
