@@ -6,43 +6,60 @@ class StrUtil {
     
     /**
      * 文字列が指定した文字列で始まるかどうかをチェックする。
+     *
+     * PHP 8 の str_starts_with と同じ仕様 ( 空文字列 needle は true ) を維持しつつ、
+     * PHP 7.4 でも安全に動くポータブル実装 ( strncmp ベース )。旧実装は
+     * version_compare 分岐内で strpos($str, '') を呼んでおり、PHP 7.4 で
+     * Empty needle warning を出すデッドコードがあった ( mailform74 同期で表面化 )。
+     *
      * @param string $str チェックする文字列
      * @param string $search 検索する文字列
      * @return bool 指定した文字列で始まる場合はtrueを返す。
      */
     public static function startsWith( string $str, string $search ) : bool {
-        if ( version_compare(PHP_VERSION, '8.0.0') < 0 ) {
-            return strpos($str, $search) === 0;
+        if ( $search === '' ) {
+            return true;
         }
-        return str_starts_with($str, $search);
+        return strncmp($str, $search, strlen($search)) === 0;
     }
-    
-    
+
+
     /**
      * 文字列が指定した文字列で終わるかどうかをチェックする。
+     *
+     * PHP 8 の str_ends_with と同じ仕様 ( 空文字列 needle は true ) を維持しつつ、
+     * PHP 7.4 でも安全に動くポータブル実装 ( substr_compare ベース )。
+     *
      * @param string $str チェックする文字列
      * @param string $search 検索する文字列
      * @return bool 指定した文字列で終わる場合はtrueを返す。
      */
     public static function endsWith( string $str, string $search ) : bool {
-        if ( version_compare(PHP_VERSION, '8.0.0') < 0 ) {
-            return strrpos($str, $search) === strlen($str) - strlen($search);
+        if ( $search === '' ) {
+            return true;
         }
-        return str_ends_with($str, $search);
+        $searchLen = strlen($search);
+        if ( $searchLen > strlen($str) ) {
+            return false;
+        }
+        return substr_compare($str, $search, -$searchLen) === 0;
     }
-    
-    
+
+
     /**
      * 文字列が指定した文字列を含むかどうかをチェックする。
+     *
+     * PHP 8 の str_contains と同じ仕様 ( 空文字列 needle は true )。
+     *
      * @param string $str
      * @param string $search
      * @return bool
      */
     public static function contains( string $str, string $search ) : bool {
-        if ( version_compare(PHP_VERSION, '8.0.0') < 0 ) {
-            return strpos($str, $search) !== false;
+        if ( $search === '' ) {
+            return true;
         }
-        return str_contains($str, $search);
+        return strpos($str, $search) !== false;
     }
     
     
