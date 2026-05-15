@@ -89,7 +89,12 @@ abstract class HttpAIClient extends AIClient {
 
     /**
      * 文字列から JSON オブジェクト部分を抽出して連想配列で返す。
-     * 「```json ... ```」コードブロック表記やプレーンの両方に対応。
+     * 「```json ... ```」コードブロック表記とプレーン JSON のみ受け付ける。
+     *
+     * 「最初の `{` 〜 最後の `}`」を切り出すフォールバックは廃止 ( セキュリティ強化 )。
+     * モデル出力が説明文を含むと、攻撃文面に埋め込まれた `{...}` を意図せず採用して
+     * しまう可能性があるため。jsonMode のときはモデルに「JSON のみ返す」よう指示する
+     * 前提で、その契約から外れた応答は decode 失敗として扱う ( = null )。
      */
     private function extractJsonObject( string $text ) : ?array {
         // ```json ... ``` を抜き出す
@@ -102,14 +107,6 @@ abstract class HttpAIClient extends AIClient {
         $decoded = json_decode($trimmed, true);
         if ( is_array($decoded) ) return $decoded;
 
-        // 最初の { から最後の } を切り出して試す
-        $start = strpos($trimmed, '{');
-        $end   = strrpos($trimmed, '}');
-        if ( $start !== false && $end !== false && $end > $start ) {
-            $sub = substr($trimmed, $start, $end - $start + 1);
-            $decoded = json_decode($sub, true);
-            if ( is_array($decoded) ) return $decoded;
-        }
         return null;
     }
 
